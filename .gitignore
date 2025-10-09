@@ -353,6 +353,7 @@ docker-compose.override.yml
 .docusaurus
 
 # --- Documentation ---
+docs/
 docs/_build/
 site/
 
