@@ -1,0 +1,388 @@
+# --- OS Generated Files ---
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# --- IDE & Editor Files ---
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Atom
+.atom/
+
+# --- Language Specific ---
+
+# Node.js
+node_modules/
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Optional caches
+.npm
+.eslintcache
+.stylelintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+
+# Environment files
+.env
+.env*.local
+.env.development
+.env.test
+.env.production
+.env.staging
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Java
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+target/
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.properties
+
+# Kotlin
+*.kt.class
+
+# Scala
+*.class
+*.log
+.scala_dependencies
+.worksheet
+
+# C/C++
+*.o
+*.obj
+*.elf
+*.ko
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+vendor/
+
+# Ruby
+/.bundle
+/vendor/bundle
+/lib/bundle
+*.gem
+.bundle
+vendor/
+
+# PHP
+/vendor/
+composer.lock
+.phpunit.result.cache
+
+# Swift
+*.xcodeproj
+*.xcworkspace
+Carthage/
+Packages/
+.swiftpm/
+
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# --- Databases ---
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# --- Certificates & Keys ---
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# --- Build Outputs ---
+dist/
+build/
+out/
+bin/
+obj/
+
+# --- Logs ---
+*.log
+logs/
+log/
+
+# --- Runtime Data ---
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# --- Coverage Reports ---
+coverage/
+*.lcov
+.nyc_output
+
+# --- Dependency Directories ---
+jspm_packages/
+web_modules/
+bower_components/
+
+# --- Framework Specific ---
+
+# Next.js
+.next/
+out/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Nuxt.js
+.nuxt/
+.output/
+
+# Gatsby
+.cache/
+public/
+
+# Vitepress
+.vuepress/dist
+**/.vitepress/dist
+**/.vitepress/cache
+
+# SvelteKit
+.svelte-kit/
+package/
+
+# React
+.eslintcache
+
+# Angular
+/dist/
+/tmp/
+/out-tsc/
+/bazel-out/
+*.tsbuildinfo
+
+# --- Bundlers & Tools ---
+
+# Webpack
+.webpack/
+
+# Parcel
+.cache/
+.parcel-cache/
+
+# Vite
+dist-ssr/
+*.local
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Rollup
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# --- Testing ---
+.jest/
+cypress/videos/
+cypress/screenshots/
+test-results/
+playwright-report/
+
+# --- Serverless ---
+.serverless/
+.sls/
+
+# --- Container & Deployment ---
+.dockerignore
+docker-compose.override.yml
+.docker/
+
+# Kubernetes
+*.kubeconfig
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# --- Cache Directories ---
+.cache/
+.temp
+*.tmp
+*.temp
+.docusaurus
+
+# --- Documentation ---
+docs/_build/
+site/
+
+# --- Backup Files ---
+*.bak
+*.backup
+*.old
+*.orig
+
+# --- Compressed Files (when not part of project) ---
+*.7z
+*.dmg
+*.gz
+*.iso
+*.rar
+*.tar
+*.zip
+
+# --- Temporary Files ---
+tmp/
+temp/
+.tmp/
+local-*
+
+# --- Custom Project Files ---
+.claude
+.z-ai-config
+dev.log
+test
+prompt
+server.log
+
+# --- End of .gitignore ---
