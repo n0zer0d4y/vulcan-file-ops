@@ -169,7 +169,7 @@ await Promise.all(
 // Initialize the global configuration in lib.ts
 setAllowedDirectories(allowedDirectories);
 setIgnoredFolders(ignoredFolders);
-// Note: enabledTools now contains the combined list of tools from both categories and individual tools
+// Set individual enabled tools (categories are combined dynamically in tool handlers)
 setEnabledTools(enabledTools);
 
 // Server setup
