@@ -31,6 +31,7 @@ import { getSearchTools } from "../tools/search-tools.js";
 // Configuration storage
 let allowedDirectories: string[] = [];
 let ignoredFolders: string[] = [];
+let enabledToolCategories: string[] = [];
 let enabledTools: string[] = [];
 
 // Command line argument parsing
@@ -38,6 +39,7 @@ function parseArguments() {
   const args = process.argv.slice(2);
   const directories: string[] = [];
   let parsingIgnoredFolders = false;
+  let parsingEnabledToolCategories = false;
   let parsingEnabledTools = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -45,6 +47,7 @@ function parseArguments() {
 
     if (arg === "--ignored-folders") {
       parsingIgnoredFolders = true;
+      parsingEnabledToolCategories = false;
       parsingEnabledTools = false;
       if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
         ignoredFolders = args[i + 1]
@@ -56,9 +59,24 @@ function parseArguments() {
       continue;
     }
 
+    if (arg === "--enabled-tool-categories") {
+      parsingEnabledToolCategories = true;
+      parsingIgnoredFolders = false;
+      parsingEnabledTools = false;
+      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        enabledToolCategories = args[i + 1]
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0);
+        i++; // Skip the next argument as it's been consumed
+      }
+      continue;
+    }
+
     if (arg === "--enabled-tools") {
       parsingEnabledTools = true;
       parsingIgnoredFolders = false;
+      parsingEnabledToolCategories = false;
       if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
         enabledTools = args[i + 1]
           .split(",")
@@ -70,12 +88,17 @@ function parseArguments() {
     }
 
     // If we're not parsing a flag value, treat as directory
-    if (!parsingIgnoredFolders && !parsingEnabledTools) {
+    if (
+      !parsingIgnoredFolders &&
+      !parsingEnabledToolCategories &&
+      !parsingEnabledTools
+    ) {
       directories.push(arg);
     }
 
     // Reset parsing flags
     parsingIgnoredFolders = false;
+    parsingEnabledToolCategories = false;
     parsingEnabledTools = false;
   }
 
@@ -88,6 +111,7 @@ const directoryArgs = parseArguments();
 if (
   directoryArgs.length > 0 ||
   ignoredFolders.length > 0 ||
+  enabledToolCategories.length > 0 ||
   enabledTools.length > 0
 ) {
   console.error("Configuration:");
@@ -96,6 +120,11 @@ if (
   }
   if (ignoredFolders.length > 0) {
     console.error(`  Ignored folders: ${ignoredFolders.join(", ")}`);
+  }
+  if (enabledToolCategories.length > 0) {
+    console.error(
+      `  Enabled tool categories: ${enabledToolCategories.join(", ")}`
+    );
   }
   if (enabledTools.length > 0) {
     console.error(`  Enabled tools: ${enabledTools.join(", ")}`);
@@ -140,6 +169,7 @@ await Promise.all(
 // Initialize the global configuration in lib.ts
 setAllowedDirectories(allowedDirectories);
 setIgnoredFolders(ignoredFolders);
+// Note: enabledTools now contains the combined list of tools from both categories and individual tools
 setEnabledTools(enabledTools);
 
 // Server setup
@@ -282,6 +312,18 @@ function expandEnabledTools(requestedTools: string[]): string[] {
   return Array.from(expandedTools);
 }
 
+// Function to combine and validate enabled tools from both categories and individual tools
+function combineEnabledTools(): string[] {
+  const allRequestedTools = [...enabledToolCategories, ...enabledTools];
+
+  if (allRequestedTools.length === 0) {
+    // If no tools specified, enable all by default
+    return TOOL_CATEGORIES.all;
+  }
+
+  return expandEnabledTools(allRequestedTools);
+}
+
 // Tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   let tools = [
@@ -292,9 +334,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   ];
 
   // Filter tools if selective activation is configured
-  if (enabledTools.length > 0) {
-    const expandedEnabledTools = expandEnabledTools(enabledTools);
-    tools = tools.filter((tool) => expandedEnabledTools.includes(tool.name));
+  if (enabledToolCategories.length > 0 || enabledTools.length > 0) {
+    const combinedEnabledTools = combineEnabledTools();
+    tools = tools.filter((tool) => combinedEnabledTools.includes(tool.name));
   }
 
   return { tools };
@@ -305,11 +347,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
     // Check if tool is enabled (if selective activation is configured)
-    if (enabledTools.length > 0) {
-      const expandedEnabledTools = expandEnabledTools(enabledTools);
-      if (!expandedEnabledTools.includes(name)) {
+    if (enabledToolCategories.length > 0 || enabledTools.length > 0) {
+      const combinedEnabledTools = combineEnabledTools();
+      if (!combinedEnabledTools.includes(name)) {
         throw new Error(
-          `Tool '${name}' is not enabled. Enabled tools: ${expandedEnabledTools.join(
+          `Tool '${name}' is not enabled. Enabled tools: ${combinedEnabledTools.join(
             ", "
           )}`
         );
