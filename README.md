@@ -254,12 +254,27 @@ Exclude specific folders from directory listings to improve performance and redu
 
 Enable only specific tools or tool categories instead of all 15 tools:
 
+**Tool Categories:**
+
 ```json
 {
   "mcpServers": {
     "filesystem-of-a-down": {
       "command": "filesystem-of-a-down",
-      "args": ["--enabled-tools", "read,write,filesystem"]
+      "args": ["--enabled-tool-categories", "read,filesystem"]
+    }
+  }
+}
+```
+
+**Individual Tools:**
+
+```json
+{
+  "mcpServers": {
+    "filesystem-of-a-down": {
+      "command": "filesystem-of-a-down",
+      "args": ["--enabled-tools", "read_file,list_directory,search_files"]
     }
   }
 }
@@ -273,7 +288,12 @@ Enable only specific tools or tool categories instead of all 15 tools:
 - `search` - File searching operations
 - `all` - All tools (default behavior)
 
-**Individual Tools:** You can also specify individual tool names instead of categories.
+**Available Individual Tools:**
+
+- `read_file`, `read_text_file`, `read_media_file`, `read_multiple_files`
+- `write_file`, `edit_file`
+- `create_directory`, `list_directory`, `list_directory_with_sizes`, `directory_tree`, `move_file`, `get_file_info`, `register_directory`, `list_allowed_directories`
+- `search_files`
 
 #### Combined Configuration
 
