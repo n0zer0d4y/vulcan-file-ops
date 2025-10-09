@@ -445,7 +445,11 @@ export async function searchFilesWithValidation(
   const { excludePatterns = [] } = options;
   const results: string[] = [];
 
-  async function search(currentPath: string) {
+  // Check if pattern requires recursive search (contains ** or has path separators)
+  const needsRecursion =
+    pattern.includes("**") || pattern.includes("/") || pattern.includes("\\");
+
+  async function search(currentPath: string, currentDepth: number = 0) {
     const entries = await fs.readdir(currentPath, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -466,8 +470,10 @@ export async function searchFilesWithValidation(
           results.push(fullPath);
         }
 
-        if (entry.isDirectory()) {
-          await search(fullPath);
+        // Only recurse if pattern requires it and we're not too deep
+        // Limit recursion depth to prevent infinite loops or excessive searching
+        if (entry.isDirectory() && needsRecursion && currentDepth < 10) {
+          await search(fullPath, currentDepth + 1);
         }
       } catch {
         continue;
