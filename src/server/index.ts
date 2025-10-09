@@ -16,7 +16,11 @@ import fs from "fs/promises";
 import path from "path";
 import { normalizePath, expandHome } from "../utils/path-utils.js";
 import { getValidRootDirectories } from "../utils/roots-utils.js";
-import { setAllowedDirectories } from "../utils/lib.js";
+import {
+  setAllowedDirectories,
+  setIgnoredFolders,
+  setEnabledTools,
+} from "../utils/lib.js";
 
 // Import tool handlers
 import { getReadTools } from "../tools/read-tools.js";
@@ -24,20 +28,84 @@ import { getWriteTools } from "../tools/write-tools.js";
 import { getFileSystemTools } from "../tools/filesystem-tools.js";
 import { getSearchTools } from "../tools/search-tools.js";
 
-// Command line argument parsing (optional - dynamic access via MCP roots)
-const args = process.argv.slice(2);
-if (args.length > 0) {
-  console.error(
-    "Optional: Directories can be provided as command-line arguments,"
-  );
-  console.error(
-    "but dynamic directory access via MCP roots protocol is preferred."
-  );
+// Configuration storage
+let allowedDirectories: string[] = [];
+let ignoredFolders: string[] = [];
+let enabledTools: string[] = [];
+
+// Command line argument parsing
+function parseArguments() {
+  const args = process.argv.slice(2);
+  const directories: string[] = [];
+  let parsingIgnoredFolders = false;
+  let parsingEnabledTools = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--ignored-folders") {
+      parsingIgnoredFolders = true;
+      parsingEnabledTools = false;
+      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        ignoredFolders = args[i + 1]
+          .split(",")
+          .map((f) => f.trim())
+          .filter((f) => f.length > 0);
+        i++; // Skip the next argument as it's been consumed
+      }
+      continue;
+    }
+
+    if (arg === "--enabled-tools") {
+      parsingEnabledTools = true;
+      parsingIgnoredFolders = false;
+      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        enabledTools = args[i + 1]
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0);
+        i++; // Skip the next argument as it's been consumed
+      }
+      continue;
+    }
+
+    // If we're not parsing a flag value, treat as directory
+    if (!parsingIgnoredFolders && !parsingEnabledTools) {
+      directories.push(arg);
+    }
+
+    // Reset parsing flags
+    parsingIgnoredFolders = false;
+    parsingEnabledTools = false;
+  }
+
+  return directories;
+}
+
+const directoryArgs = parseArguments();
+
+// Display configuration info
+if (
+  directoryArgs.length > 0 ||
+  ignoredFolders.length > 0 ||
+  enabledTools.length > 0
+) {
+  console.error("Configuration:");
+  if (directoryArgs.length > 0) {
+    console.error(`  Directories: ${directoryArgs.join(", ")}`);
+  }
+  if (ignoredFolders.length > 0) {
+    console.error(`  Ignored folders: ${ignoredFolders.join(", ")}`);
+  }
+  if (enabledTools.length > 0) {
+    console.error(`  Enabled tools: ${enabledTools.join(", ")}`);
+  }
+  console.error("");
 }
 
 // Store allowed directories in normalized and resolved form
-let allowedDirectories = await Promise.all(
-  args.map(async (dir) => {
+allowedDirectories = await Promise.all(
+  directoryArgs.map(async (dir) => {
     const expanded = expandHome(dir);
     const absolute = path.resolve(expanded);
     try {
@@ -69,8 +137,10 @@ await Promise.all(
   })
 );
 
-// Initialize the global allowedDirectories in lib.ts
+// Initialize the global configuration in lib.ts
 setAllowedDirectories(allowedDirectories);
+setIgnoredFolders(ignoredFolders);
+setEnabledTools(enabledTools);
 
 // Server setup
 const server = new Server(
@@ -114,14 +184,118 @@ server.setRequestHandler(PingRequestSchema, async () => {
   return {};
 });
 
+// Tool registry for selective activation
+const TOOL_REGISTRY = {
+  // Read tools
+  read_file: () => getReadTools().find((t) => t.name === "read_file"),
+  read_text_file: () => getReadTools().find((t) => t.name === "read_text_file"),
+  read_media_file: () =>
+    getReadTools().find((t) => t.name === "read_media_file"),
+  read_multiple_files: () =>
+    getReadTools().find((t) => t.name === "read_multiple_files"),
+
+  // Write tools
+  write_file: () => getWriteTools().find((t) => t.name === "write_file"),
+  edit_file: () => getWriteTools().find((t) => t.name === "edit_file"),
+
+  // Filesystem tools
+  create_directory: () =>
+    getFileSystemTools().find((t) => t.name === "create_directory"),
+  list_directory: () =>
+    getFileSystemTools().find((t) => t.name === "list_directory"),
+  list_directory_with_sizes: () =>
+    getFileSystemTools().find((t) => t.name === "list_directory_with_sizes"),
+  directory_tree: () =>
+    getFileSystemTools().find((t) => t.name === "directory_tree"),
+  move_file: () => getFileSystemTools().find((t) => t.name === "move_file"),
+  get_file_info: () =>
+    getFileSystemTools().find((t) => t.name === "get_file_info"),
+  register_directory: () =>
+    getFileSystemTools().find((t) => t.name === "register_directory"),
+  list_allowed_directories: () =>
+    getFileSystemTools().find((t) => t.name === "list_allowed_directories"),
+
+  // Search tools
+  search_files: () => getSearchTools().find((t) => t.name === "search_files"),
+};
+
+// Tool categories for easier configuration
+const TOOL_CATEGORIES = {
+  read: [
+    "read_file",
+    "read_text_file",
+    "read_media_file",
+    "read_multiple_files",
+  ],
+  write: ["write_file", "edit_file"],
+  filesystem: [
+    "create_directory",
+    "list_directory",
+    "list_directory_with_sizes",
+    "directory_tree",
+    "move_file",
+    "get_file_info",
+    "register_directory",
+    "list_allowed_directories",
+  ],
+  search: ["search_files"],
+  all: [
+    "read_file",
+    "read_text_file",
+    "read_media_file",
+    "read_multiple_files",
+    "write_file",
+    "edit_file",
+    "create_directory",
+    "list_directory",
+    "list_directory_with_sizes",
+    "directory_tree",
+    "move_file",
+    "get_file_info",
+    "register_directory",
+    "list_allowed_directories",
+    "search_files",
+  ],
+};
+
+// Function to expand tool categories and validate tool names
+function expandEnabledTools(requestedTools: string[]): string[] {
+  const expandedTools = new Set<string>();
+
+  for (const tool of requestedTools) {
+    if (tool === "all") {
+      // Add all tools
+      TOOL_CATEGORIES.all.forEach((t) => expandedTools.add(t));
+    } else if (TOOL_CATEGORIES[tool as keyof typeof TOOL_CATEGORIES]) {
+      // Expand category
+      (
+        TOOL_CATEGORIES[tool as keyof typeof TOOL_CATEGORIES] as string[]
+      ).forEach((t) => expandedTools.add(t));
+    } else if (TOOL_REGISTRY[tool as keyof typeof TOOL_REGISTRY]) {
+      // Individual tool
+      expandedTools.add(tool);
+    } else {
+      console.warn(`Unknown tool or category: ${tool}`);
+    }
+  }
+
+  return Array.from(expandedTools);
+}
+
 // Tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  const tools = [
+  let tools = [
     ...getReadTools(),
     ...getWriteTools(),
     ...getFileSystemTools(),
     ...getSearchTools(),
   ];
+
+  // Filter tools if selective activation is configured
+  if (enabledTools.length > 0) {
+    const expandedEnabledTools = expandEnabledTools(enabledTools);
+    tools = tools.filter((tool) => expandedEnabledTools.includes(tool.name));
+  }
 
   return { tools };
 });
@@ -129,6 +303,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     const { name, arguments: args } = request.params;
+
+    // Check if tool is enabled (if selective activation is configured)
+    if (enabledTools.length > 0) {
+      const expandedEnabledTools = expandEnabledTools(enabledTools);
+      if (!expandedEnabledTools.includes(name)) {
+        throw new Error(
+          `Tool '${name}' is not enabled. Enabled tools: ${expandedEnabledTools.join(
+            ", "
+          )}`
+        );
+      }
+    }
 
     // Import the tool handler dynamically based on the tool name
     // This keeps the main server file clean and modular
