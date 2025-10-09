@@ -297,7 +297,27 @@ Enable only specific tools or tool categories instead of all 15 tools:
 
 #### Combined Configuration
 
-You can combine both features:
+You can combine all three features:
+
+**Example 1: Directory ignoring + Tool categories**
+
+```json
+{
+  "mcpServers": {
+    "filesystem-of-a-down": {
+      "command": "filesystem-of-a-down",
+      "args": [
+        "--ignored-folders",
+        "node_modules,dist,.git",
+        "--enabled-tool-categories",
+        "read,filesystem"
+      ]
+    }
+  }
+}
+```
+
+**Example 2: Directory ignoring + Individual tools**
 
 ```json
 {
@@ -308,12 +328,34 @@ You can combine both features:
         "--ignored-folders",
         "node_modules,dist,.git",
         "--enabled-tools",
-        "read,filesystem,search"
+        "read_file,list_directory,search_files"
       ]
     }
   }
 }
 ```
+
+**Example 3: All three arguments together**
+
+```json
+{
+  "mcpServers": {
+    "filesystem-of-a-down": {
+      "command": "filesystem-of-a-down",
+      "args": [
+        "--ignored-folders",
+        "node_modules,dist,.git,.next",
+        "--enabled-tool-categories",
+        "read",
+        "--enabled-tools",
+        "list_directory,search_files"
+      ]
+    }
+  }
+}
+```
+
+When both `--enabled-tool-categories` and `--enabled-tools` are specified, the tools from both are combined.
 
 **Note**: Unlike the original npx version, this local installation gives you full control over the MCP server with no external dependencies. Directory access is dynamic and user-controlled through MCP roots protocol.
 
