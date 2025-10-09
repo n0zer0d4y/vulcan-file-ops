@@ -5,6 +5,7 @@ import {
   validatePath,
   searchFilesWithValidation,
   getAllowedDirectories,
+  getIgnoredFolders,
 } from "../utils/lib.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
@@ -33,11 +34,16 @@ export async function handleSearchTool(name: string, args: any) {
         throw new Error(`Invalid arguments for search_files: ${parsed.error}`);
       }
       const validPath = await validatePath(parsed.data.path);
+      // Combine user-specified patterns with global ignored folders
+      const allExcludePatterns = [
+        ...parsed.data.excludePatterns,
+        ...getIgnoredFolders(),
+      ];
       const results = await searchFilesWithValidation(
         validPath,
         parsed.data.pattern,
         getAllowedDirectories(),
-        { excludePatterns: parsed.data.excludePatterns }
+        { excludePatterns: allExcludePatterns }
       );
       return {
         content: [
