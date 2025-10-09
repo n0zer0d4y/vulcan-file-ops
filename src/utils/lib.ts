@@ -7,8 +7,10 @@ import { minimatch } from "minimatch";
 import { normalizePath, expandHome } from "./path-utils.js";
 import { isPathWithinAllowedDirectories } from "./path-validation.js";
 
-// Global allowed directories - set by the main module
+// Global configuration - set by the main module
 let allowedDirectories: string[] = [];
+let ignoredFolders: string[] = [];
+let enabledTools: string[] = [];
 
 // Function to set allowed directories from the main module
 export function setAllowedDirectories(directories: string[]): void {
@@ -18,6 +20,49 @@ export function setAllowedDirectories(directories: string[]): void {
 // Function to get current allowed directories
 export function getAllowedDirectories(): string[] {
   return [...allowedDirectories];
+}
+
+// Function to set ignored folders from the main module
+export function setIgnoredFolders(folders: string[]): void {
+  ignoredFolders = [...folders];
+}
+
+// Function to get current ignored folders
+export function getIgnoredFolders(): string[] {
+  return [...ignoredFolders];
+}
+
+// Function to set enabled tools from the main module
+export function setEnabledTools(tools: string[]): void {
+  enabledTools = [...tools];
+}
+
+// Function to get current enabled tools
+export function getEnabledTools(): string[] {
+  return [...enabledTools];
+}
+
+// Function to check if a folder should be ignored
+export function shouldIgnoreFolder(folderName: string): boolean {
+  if (ignoredFolders.length === 0) {
+    return false;
+  }
+
+  // Check exact matches first
+  if (ignoredFolders.includes(folderName)) {
+    return true;
+  }
+
+  // Check glob patterns
+  return ignoredFolders.some((pattern) => {
+    try {
+      return minimatch(folderName, pattern);
+    } catch (error) {
+      // If pattern is invalid, log warning but don't ignore
+      console.warn(`Invalid ignore pattern: ${pattern}`);
+      return false;
+    }
+  });
 }
 
 // Type definitions

@@ -231,6 +231,70 @@ Then configure your MCP client:
 }
 ```
 
+### Advanced Configuration
+
+The server supports additional configuration options for fine-tuning behavior:
+
+#### Directory Ignore Patterns
+
+Exclude specific folders from directory listings to improve performance and reduce clutter:
+
+```json
+{
+  "mcpServers": {
+    "filesystem-of-a-down": {
+      "command": "filesystem-of-a-down",
+      "args": ["--ignored-folders", "node_modules,dist,.git,.next"]
+    }
+  }
+}
+```
+
+#### Selective Tool Activation
+
+Enable only specific tools or tool categories instead of all 15 tools:
+
+```json
+{
+  "mcpServers": {
+    "filesystem-of-a-down": {
+      "command": "filesystem-of-a-down",
+      "args": ["--enabled-tools", "read,write,filesystem"]
+    }
+  }
+}
+```
+
+**Tool Categories:**
+
+- `read` - File reading operations
+- `write` - File writing and editing operations
+- `filesystem` - Directory and file system operations
+- `search` - File searching operations
+- `all` - All tools (default behavior)
+
+**Individual Tools:** You can also specify individual tool names instead of categories.
+
+#### Combined Configuration
+
+You can combine both features:
+
+```json
+{
+  "mcpServers": {
+    "filesystem-of-a-down": {
+      "command": "filesystem-of-a-down",
+      "args": [
+        "--ignored-folders",
+        "node_modules,dist,.git",
+        "--enabled-tools",
+        "read,filesystem,search"
+      ]
+    }
+  }
+}
+```
+
 **Note**: Unlike the original npx version, this local installation gives you full control over the MCP server with no external dependencies. Directory access is dynamic and user-controlled through MCP roots protocol.
 
 ## Usage with VS Code

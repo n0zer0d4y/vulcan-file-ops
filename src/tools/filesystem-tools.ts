@@ -26,6 +26,8 @@ import {
   formatSize,
   getAllowedDirectories,
   setAllowedDirectories,
+  shouldIgnoreFolder,
+  getIgnoredFolders,
 } from "../utils/lib.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
@@ -143,7 +145,18 @@ export async function handleFileSystemTool(name: string, args: any) {
       }
       const validPath = await validatePath(parsed.data.path);
       const entries = await fs.readdir(validPath, { withFileTypes: true });
-      const formatted = entries
+
+      // Filter out ignored folders
+      const filteredEntries = entries.filter((entry) => {
+        // Always include files
+        if (!entry.isDirectory()) {
+          return true;
+        }
+        // Filter out directories that should be ignored
+        return !shouldIgnoreFolder(entry.name);
+      });
+
+      const formatted = filteredEntries
         .map(
           (entry) => `${entry.isDirectory() ? "[DIR]" : "[FILE]"} ${entry.name}`
         )
@@ -163,9 +176,19 @@ export async function handleFileSystemTool(name: string, args: any) {
       const validPath = await validatePath(parsed.data.path);
       const entries = await fs.readdir(validPath, { withFileTypes: true });
 
+      // Filter out ignored folders before processing
+      const filteredEntries = entries.filter((entry) => {
+        // Always include files
+        if (!entry.isDirectory()) {
+          return true;
+        }
+        // Filter out directories that should be ignored
+        return !shouldIgnoreFolder(entry.name);
+      });
+
       // Get detailed information for each entry
       const detailedEntries = await Promise.all(
-        entries.map(async (entry) => {
+        filteredEntries.map(async (entry) => {
           const entryPath = path.join(validPath, entry.name);
           try {
             const stats = await fs.stat(entryPath);
@@ -243,9 +266,15 @@ export async function handleFileSystemTool(name: string, args: any) {
 
       const rootPath = parsed.data.path;
 
+      // Combine user-specified patterns with global ignored folders
+      const allExcludePatterns = [
+        ...parsed.data.excludePatterns,
+        ...getIgnoredFolders(),
+      ];
+
       async function buildTree(
         currentPath: string,
-        excludePatterns: string[] = []
+        userExcludePatterns: string[] = []
       ): Promise<TreeEntry[]> {
         const validPath = await validatePath(currentPath);
         const entries = await fs.readdir(validPath, { withFileTypes: true });
@@ -256,7 +285,9 @@ export async function handleFileSystemTool(name: string, args: any) {
             rootPath,
             path.join(currentPath, entry.name)
           );
-          const shouldExclude = excludePatterns.some((pattern) => {
+
+          // Check user-specified patterns
+          const shouldExcludeByPattern = userExcludePatterns.some((pattern) => {
             if (pattern.includes("*")) {
               return minimatch(relativePath, pattern, { dot: true });
             }
@@ -268,7 +299,12 @@ export async function handleFileSystemTool(name: string, args: any) {
               minimatch(relativePath, `**/${pattern}/**`, { dot: true })
             );
           });
-          if (shouldExclude) continue;
+
+          // Also check global ignored folders for top-level entries
+          const shouldExcludeByGlobal =
+            entry.isDirectory() && shouldIgnoreFolder(entry.name);
+
+          if (shouldExcludeByPattern || shouldExcludeByGlobal) continue;
 
           const entryData: TreeEntry = {
             name: entry.name,
@@ -277,7 +313,7 @@ export async function handleFileSystemTool(name: string, args: any) {
 
           if (entry.isDirectory()) {
             const subPath = path.join(currentPath, entry.name);
-            entryData.children = await buildTree(subPath, excludePatterns);
+            entryData.children = await buildTree(subPath, userExcludePatterns);
           }
 
           result.push(entryData);
@@ -286,7 +322,7 @@ export async function handleFileSystemTool(name: string, args: any) {
         return result;
       }
 
-      const treeData = await buildTree(rootPath, parsed.data.excludePatterns);
+      const treeData = await buildTree(rootPath, allExcludePatterns);
       return {
         content: [
           {
