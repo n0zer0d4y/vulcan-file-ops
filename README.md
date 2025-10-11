@@ -165,6 +165,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **list_directory_with_sizes**: Show directory contents with size information and sorting
 - **directory_tree**: Generate hierarchical directory structure as JSON
 - **move_file**: Relocate or rename files and directories
+- **file_operations**: Perform single or bulk file operations (move, copy, rename) on multiple files and directories concurrently
 - **search_files**: Locate files using pattern matching with exclusion support
 - **get_file_info**: Retrieve comprehensive file and directory metadata
 - **register_directory**: Enable runtime access to new directories
@@ -174,7 +175,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 - **read**: File content access operations (read_file, read_text_file, read_media_file, read_multiple_files)
 - **write**: File modification operations (write_file, write_multiple_files, edit_file)
-- **filesystem**: Directory and file system management (create_directory, list_directory, list_directory_with_sizes, directory_tree, move_file, get_file_info, register_directory, list_allowed_directories)
+- **filesystem**: Directory and file system management (create_directory, list_directory, list_directory_with_sizes, directory_tree, move_file, file_operations, get_file_info, register_directory, list_allowed_directories)
 - **search**: File discovery operations (search_files)
 - **all**: Complete tool set (default behavior)
 
