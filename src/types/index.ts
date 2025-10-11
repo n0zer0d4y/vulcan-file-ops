@@ -100,6 +100,25 @@ export const RegisterDirectoryArgsSchema = z.object({
   path: z.string().describe("Directory path to register for access"),
 });
 
+export const FileOperationsArgsSchema = z.object({
+  operation: z.enum(["move", "copy", "rename"]),
+  files: z
+    .array(
+      z.object({
+        source: z.string().describe("Source file or directory path"),
+        destination: z.string().describe("Destination file or directory path"),
+      })
+    )
+    .min(1)
+    .max(100)
+    .describe("Array of source-destination file pairs"),
+  onConflict: z
+    .enum(["skip", "overwrite", "error"])
+    .optional()
+    .default("error")
+    .describe("How to handle destination conflicts"),
+});
+
 // Type exports
 export type ReadTextFileArgs = z.infer<typeof ReadTextFileArgsSchema>;
 export type ReadMediaFileArgs = z.infer<typeof ReadMediaFileArgsSchema>;
@@ -120,3 +139,4 @@ export type MoveFileArgs = z.infer<typeof MoveFileArgsSchema>;
 export type SearchFilesArgs = z.infer<typeof SearchFilesArgsSchema>;
 export type GetFileInfoArgs = z.infer<typeof GetFileInfoArgsSchema>;
 export type RegisterDirectoryArgs = z.infer<typeof RegisterDirectoryArgsSchema>;
+export type FileOperationsArgs = z.infer<typeof FileOperationsArgsSchema>;

@@ -12,6 +12,7 @@ import {
   MoveFileArgsSchema,
   GetFileInfoArgsSchema,
   RegisterDirectoryArgsSchema,
+  FileOperationsArgsSchema,
   type CreateDirectoryArgs,
   type ListDirectoryArgs,
   type ListDirectoryWithSizesArgs,
@@ -19,6 +20,7 @@ import {
   type MoveFileArgs,
   type GetFileInfoArgs,
   type RegisterDirectoryArgs,
+  type FileOperationsArgs,
 } from "../types/index.js";
 import {
   validatePath,
@@ -111,6 +113,52 @@ export function getFileSystemTools() {
         properties: {},
         required: [],
       },
+    },
+    {
+      name: "file_operations",
+      description:
+        "Perform bulk file operations (move, copy, rename) on single or multiple files and directories concurrently. " +
+        "All operations are validated for security before execution. Supports conflict resolution " +
+        "strategies for existing destinations. Maximum 100 files per operation for performance.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          operation: {
+            type: "string",
+            enum: ["move", "copy", "rename"],
+            description: "The type of file operation to perform",
+          },
+          files: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                source: {
+                  type: "string",
+                  description: "Source file or directory path",
+                },
+                destination: {
+                  type: "string",
+                  description: "Destination file or directory path",
+                },
+              },
+              required: ["source", "destination"],
+              additionalProperties: false,
+            },
+            minItems: 1,
+            maxItems: 100,
+            description: "Array of source-destination file pairs",
+          },
+          onConflict: {
+            type: "string",
+            enum: ["skip", "overwrite", "error"],
+            description: "How to handle destination conflicts",
+            default: "error",
+          },
+        },
+        required: ["operation", "files"],
+        additionalProperties: false,
+      } as ToolInput,
     },
   ];
 }
@@ -430,7 +478,203 @@ export async function handleFileSystemTool(name: string, args: any) {
       };
     }
 
+    case "file_operations": {
+      const parsed = FileOperationsArgsSchema.safeParse(args);
+      if (!parsed.success) {
+        throw new Error(
+          `Invalid arguments for file_operations: ${parsed.error}`
+        );
+      }
+
+      // Phase 1: Path Validation
+      const validationPromises = parsed.data.files.map(async (file, index) => {
+        try {
+          const validSource = await validatePath(file.source);
+          const validDest = await validatePath(file.destination);
+          return {
+            index,
+            source: file.source,
+            destination: file.destination,
+            validSource,
+            validDest,
+            success: true,
+          };
+        } catch (error) {
+          return {
+            index,
+            source: file.source,
+            destination: file.destination,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      });
+
+      const validatedFiles = await Promise.all(validationPromises);
+
+      // Check for validation errors
+      const validationErrors = validatedFiles.filter((f) => !f.success);
+      if (validationErrors.length > 0) {
+        const errorMessages = validationErrors
+          .map(
+            (f) =>
+              `${f.source} → ${f.destination}: ${f.error || "Unknown error"}`
+          )
+          .join("\n");
+        throw new Error(`Path validation failed:\n${errorMessages}`);
+      }
+
+      // Phase 2: Conflict Detection
+      const conflictChecks = await Promise.all(
+        validatedFiles.map(async (file) => {
+          try {
+            await fs.access(file.validDest!);
+            return {
+              ...file,
+              hasConflict: true,
+            };
+          } catch {
+            return {
+              ...file,
+              hasConflict: false,
+            };
+          }
+        })
+      );
+
+      // Handle conflicts based on strategy
+      const filesToProcess = conflictChecks.filter((file) => {
+        if (file.hasConflict) {
+          switch (parsed.data.onConflict) {
+            case "skip":
+              return false;
+            case "error":
+              throw new Error(
+                `Destination already exists: ${file.destination}`
+              );
+            case "overwrite":
+              return true;
+          }
+        }
+        return true;
+      });
+
+      // Phase 3: Execute Operations
+      const operationPromises = filesToProcess.map(async (file) => {
+        try {
+          switch (parsed.data.operation) {
+            case "move":
+            case "rename":
+              await fs.rename(file.validSource!, file.validDest!);
+              break;
+            case "copy":
+              const stats = await fs.stat(file.validSource!);
+              if (stats.isDirectory()) {
+                await copyDirectoryRecursive(
+                  file.validSource!,
+                  file.validDest!
+                );
+              } else {
+                await fs.copyFile(file.validSource!, file.validDest!);
+              }
+              break;
+          }
+          return {
+            index: file.index,
+            source: file.source,
+            destination: file.destination,
+            success: true,
+            operation: parsed.data.operation,
+          };
+        } catch (error) {
+          return {
+            index: file.index,
+            source: file.source,
+            destination: file.destination,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+            operation: parsed.data.operation,
+          };
+        }
+      });
+
+      const results = await Promise.allSettled(operationPromises);
+      const processedResults = results.map((result, index) => {
+        if (result.status === "fulfilled") {
+          return result.value;
+        } else {
+          return {
+            index,
+            source: filesToProcess[index].source,
+            destination: filesToProcess[index].destination,
+            success: false,
+            error:
+              result.reason instanceof Error
+                ? result.reason.message
+                : String(result.reason),
+            operation: parsed.data.operation,
+          };
+        }
+      });
+
+      // Prepare response
+      const successful = processedResults.filter((r) => r.success);
+      const failed = processedResults.filter((r) => !r.success);
+
+      const successDetails = successful
+        .map((r) => `✓ ${r.source} → ${r.destination}`)
+        .join("\n");
+
+      const failureDetails =
+        failed.length > 0
+          ? failed
+              .map((r) => `✗ ${r.source} → ${r.destination}: ${r.error}`)
+              .join("\n")
+          : "";
+
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `Successfully performed ${parsed.data.operation} operations:\n\n` +
+              `Total operations: ${processedResults.length}\n` +
+              `Successful: ${successful.length}\n` +
+              `Failed: ${failed.length}\n\n` +
+              (failed.length > 0
+                ? `Failed operations:\n${failureDetails}\n\n`
+                : "") +
+              `Processed files:\n${successDetails}`,
+          },
+        ],
+      };
+    }
+
     default:
       throw new Error(`Unknown filesystem tool: ${name}`);
+  }
+}
+
+// Helper function for recursive directory copying
+async function copyDirectoryRecursive(
+  source: string,
+  destination: string
+): Promise<void> {
+  // Create destination directory
+  await fs.mkdir(destination, { recursive: true });
+
+  // Read source directory
+  const entries = await fs.readdir(source, { withFileTypes: true });
+
+  // Copy all entries
+  for (const entry of entries) {
+    const sourcePath = path.join(source, entry.name);
+    const destPath = path.join(destination, entry.name);
+
+    if (entry.isDirectory()) {
+      await copyDirectoryRecursive(sourcePath, destPath);
+    } else {
+      await fs.copyFile(sourcePath, destPath);
+    }
   }
 }
