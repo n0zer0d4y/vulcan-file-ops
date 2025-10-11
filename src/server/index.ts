@@ -227,6 +227,8 @@ const TOOL_REGISTRY = {
   // Write tools
   write_file: () => getWriteTools().find((t) => t.name === "write_file"),
   edit_file: () => getWriteTools().find((t) => t.name === "edit_file"),
+  write_multiple_files: () =>
+    getWriteTools().find((t) => t.name === "write_multiple_files"),
 
   // Filesystem tools
   create_directory: () =>
@@ -257,7 +259,7 @@ const TOOL_CATEGORIES = {
     "read_media_file",
     "read_multiple_files",
   ],
-  write: ["write_file", "edit_file"],
+  write: ["write_file", "edit_file", "write_multiple_files"],
   filesystem: [
     "create_directory",
     "list_directory",
@@ -276,6 +278,7 @@ const TOOL_CATEGORIES = {
     "read_multiple_files",
     "write_file",
     "edit_file",
+    "write_multiple_files",
     "create_directory",
     "list_directory",
     "list_directory_with_sizes",
@@ -372,7 +375,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Write tools
       case "write_file":
-      case "edit_file": {
+      case "edit_file":
+      case "write_multiple_files": {
         const { handleWriteTool } = await import("../tools/write-tools.js");
         return await handleWriteTool(name, args);
       }
