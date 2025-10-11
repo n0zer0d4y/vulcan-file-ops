@@ -158,6 +158,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **read_media_file**: Process image and audio files with MIME type detection
 - **read_multiple_files**: Batch file reading with error isolation
 - **write_file**: Create or replace file content
+- **write_multiple_files**: Create or replace multiple files concurrently
 - **edit_file**: Perform precise text modifications with diff output
 - **create_directory**: Generate directory structures with parent creation
 - **list_directory**: Display directory contents with type indicators
@@ -172,7 +173,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 ### Tool Categories
 
 - **read**: File content access operations (read_file, read_text_file, read_media_file, read_multiple_files)
-- **write**: File modification operations (write_file, edit_file)
+- **write**: File modification operations (write_file, write_multiple_files, edit_file)
 - **filesystem**: Directory and file system management (create_directory, list_directory, list_directory_with_sizes, directory_tree, move_file, get_file_info, register_directory, list_allowed_directories)
 - **search**: File discovery operations (search_files)
 - **all**: Complete tool set (default behavior)

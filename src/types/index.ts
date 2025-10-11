@@ -32,6 +32,19 @@ export const WriteFileArgsSchema = z.object({
   content: z.string(),
 });
 
+export const WriteMultipleFilesArgsSchema = z.object({
+  files: z
+    .array(
+      z.object({
+        path: z.string(),
+        content: z.string(),
+      })
+    )
+    .min(1, "At least one file must be provided")
+    .max(50, "Maximum 50 files per operation")
+    .describe("Array of files to write, each with path and content"),
+});
+
 export const EditOperation = z.object({
   oldText: z.string().describe("Text to search for - must match exactly"),
   newText: z.string().describe("Text to replace with"),
@@ -92,6 +105,9 @@ export type ReadTextFileArgs = z.infer<typeof ReadTextFileArgsSchema>;
 export type ReadMediaFileArgs = z.infer<typeof ReadMediaFileArgsSchema>;
 export type ReadMultipleFilesArgs = z.infer<typeof ReadMultipleFilesArgsSchema>;
 export type WriteFileArgs = z.infer<typeof WriteFileArgsSchema>;
+export type WriteMultipleFilesArgs = z.infer<
+  typeof WriteMultipleFilesArgsSchema
+>;
 export type EditOperationType = z.infer<typeof EditOperation>;
 export type EditFileArgs = z.infer<typeof EditFileArgsSchema>;
 export type CreateDirectoryArgs = z.infer<typeof CreateDirectoryArgsSchema>;
