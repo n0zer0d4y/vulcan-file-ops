@@ -36,6 +36,19 @@ const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
 
 export function getFileSystemTools() {
+  // Get current allowed directories for dynamic descriptions
+  const currentAllowedDirs = getAllowedDirectories();
+
+  // Generate dynamic text for pre-approved directories
+  const generateApprovedDirsText = (): string => {
+    if (currentAllowedDirs.length === 0) {
+      return "\n\nCURRENTLY ACCESSIBLE DIRECTORIES: None. Use this tool to register directories for access.";
+    }
+
+    const dirList = currentAllowedDirs.map((dir) => `  - ${dir}`).join("\n");
+    return `\n\nPRE-APPROVED DIRECTORIES (already accessible, DO NOT register these):\n${dirList}\n\nIMPORTANT: These directories and their subdirectories are ALREADY accessible to all filesystem tools. Do NOT use register_directory for these paths or any subdirectories within them.`;
+  };
+
   return [
     {
       name: "create_directory",
@@ -98,7 +111,8 @@ export function getFileSystemTools() {
       description:
         "Register a directory for access. This allows the AI to dynamically gain access " +
         "to directories specified by the human user during conversation. The directory " +
-        "and all its subdirectories will become accessible for all filesystem operations.",
+        "and all its subdirectories will become accessible for all filesystem operations." +
+        generateApprovedDirsText(),
       inputSchema: zodToJsonSchema(RegisterDirectoryArgsSchema) as ToolInput,
     },
     {
@@ -107,7 +121,8 @@ export function getFileSystemTools() {
         "Returns the list of directories that this server is allowed to access. " +
         "Subdirectories within these allowed directories are also accessible. " +
         "Use this to understand which directories and their nested paths are available " +
-        "before trying to access files.",
+        "before trying to access files." +
+        generateApprovedDirsText(),
       inputSchema: {
         type: "object",
         properties: {},
