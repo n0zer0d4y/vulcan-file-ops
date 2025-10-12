@@ -16,10 +16,11 @@ export function getSearchTools() {
     {
       name: "search_files",
       description:
-        "Recursively search for files and directories matching a pattern. " +
-        "The patterns should be glob-style patterns that match paths relative to the working directory. " +
-        "Use pattern like '*.ext' to match files in current directory, and '**/*.ext' to match files in all subdirectories. " +
-        "Returns full paths to all matching items. Great for finding files when you don't know their exact location. " +
+        "Perform recursive pattern-based searches for files and directories. " +
+        "Accepts glob-style patterns matching paths relative to the search root. " +
+        "Use simple patterns like '*.ext' for current directory matches, or '**/*.ext' for deep subdirectory searches. " +
+        "Returns absolute paths to all discovered items. " +
+        "Excellent for locating files when exact paths are unknown. " +
         "Only searches within allowed directories.",
       inputSchema: zodToJsonSchema(SearchFilesArgsSchema) as ToolInput,
     },

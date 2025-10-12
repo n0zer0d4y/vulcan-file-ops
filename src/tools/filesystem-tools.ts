@@ -53,28 +53,30 @@ export function getFileSystemTools() {
     {
       name: "create_directory",
       description:
-        "Create a new directory or ensure a directory exists. Can create multiple " +
-        "nested directories in one operation. If the directory already exists, " +
-        "this operation will succeed silently. Perfect for setting up directory " +
-        "structures for projects or ensuring required paths exist. Only works within allowed directories.",
+        "Create new directories or verify directory existence. " +
+        "Supports creating deeply nested directory structures in a single call with recursive parent creation. " +
+        "Operates idempotently - existing directories are simply confirmed without errors. " +
+        "Ideal for initializing project scaffolding or guaranteeing path availability. " +
+        "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(CreateDirectoryArgsSchema) as ToolInput,
     },
     {
       name: "list_directory",
       description:
-        "Get a detailed listing of all files and directories in a specified path. " +
-        "Results clearly distinguish between files and directories with [FILE] and [DIR] " +
-        "prefixes. This tool is essential for understanding directory structure and " +
-        "finding specific files within a directory. Only works within allowed directories.",
+        "Display comprehensive listings of directory contents including all files and subdirectories. " +
+        "Output uses clear [FILE] and [DIR] prefixes to differentiate between entry types at a glance. " +
+        "Essential for exploring directory organization and locating specific items within folders. " +
+        "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(ListDirectoryArgsSchema) as ToolInput,
     },
     {
       name: "list_directory_with_sizes",
       description:
-        "Get a detailed listing of all files and directories in a specified path, including sizes. " +
-        "Results clearly distinguish between files and directories with [FILE] and [DIR] " +
-        "prefixes. This tool is useful for understanding directory structure and " +
-        "finding specific files within a directory. Only works within allowed directories.",
+        "Display enhanced directory listings with file size information. " +
+        "Shows all entries with [FILE] and [DIR] prefixes for quick identification, plus file sizes for capacity planning. " +
+        "Supports sorting by name or size for flexible organization views. " +
+        "Useful for analyzing directory composition and identifying large files. " +
+        "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(
         ListDirectoryWithSizesArgsSchema
       ) as ToolInput,
@@ -82,28 +84,30 @@ export function getFileSystemTools() {
     {
       name: "directory_tree",
       description:
-        "Get a recursive tree view of files and directories as a JSON structure. " +
-        "Each entry includes 'name', 'type' (file/directory), and 'children' for directories. " +
-        "Files have no children array, while directories always have a children array (which may be empty). " +
-        "The output is formatted with 2-space indentation for readability. Only works within allowed directories.",
+        "Generate hierarchical tree representations of directory structures as JSON. " +
+        "Each node contains 'name' and 'type' (file/directory) properties, with directories including a 'children' array for nested contents. " +
+        "Files omit the children property, while directories always include it (even if empty). " +
+        "Output uses 2-space indentation for clean formatting and easy parsing. " +
+        "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(DirectoryTreeArgsSchema) as ToolInput,
     },
     {
       name: "move_file",
       description:
-        "Move or rename files and directories. Can move files between directories " +
-        "and rename them in a single operation. If the destination exists, the " +
-        "operation will fail. Works across different directories and can be used " +
-        "for simple renaming within the same directory. Both source and destination must be within allowed directories.",
+        "Relocate or rename files and directories in a single atomic operation. " +
+        "Supports cross-directory moves with simultaneous renaming when needed. " +
+        "Fails safely if the destination path already exists to prevent accidental overwrites. " +
+        "Can also perform simple same-directory renames. " +
+        "Both source and destination must be within allowed directories.",
       inputSchema: zodToJsonSchema(MoveFileArgsSchema) as ToolInput,
     },
     {
       name: "get_file_info",
       description:
-        "Retrieve detailed metadata about a file or directory. Returns comprehensive " +
-        "information including size, creation time, last modified time, permissions, " +
-        "and type. This tool is perfect for understanding file characteristics " +
-        "without reading the actual content. Only works within allowed directories.",
+        "Extract comprehensive metadata and statistics for files or directories. " +
+        "Provides detailed information including size, timestamps (creation and last modification), permissions, and entry type. " +
+        "Perfect for inspecting file properties and attributes without accessing the actual content. " +
+        "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(GetFileInfoArgsSchema) as ToolInput,
     },
     {
@@ -118,10 +122,9 @@ export function getFileSystemTools() {
     {
       name: "list_allowed_directories",
       description:
-        "Returns the list of directories that this server is allowed to access. " +
-        "Subdirectories within these allowed directories are also accessible. " +
-        "Use this to understand which directories and their nested paths are available " +
-        "before trying to access files." +
+        "Display all directories currently accessible to the server. " +
+        "Note that subdirectories within listed paths are implicitly accessible as well. " +
+        "Use this to determine available filesystem scope and plan operations accordingly before attempting file access." +
         generateApprovedDirsText(),
       inputSchema: {
         type: "object",
