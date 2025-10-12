@@ -346,6 +346,8 @@ const TOOL_REGISTRY = {
   move_file: () => getFileSystemTools().find((t) => t.name === "move_file"),
   file_operations: () =>
     getFileSystemTools().find((t) => t.name === "file_operations"),
+  delete_files: () =>
+    getFileSystemTools().find((t) => t.name === "delete_files"),
   get_file_info: () =>
     getFileSystemTools().find((t) => t.name === "get_file_info"),
   register_directory: () =>
@@ -374,6 +376,7 @@ const TOOL_CATEGORIES = {
     "directory_tree",
     "move_file",
     "file_operations",
+    "delete_files",
     "get_file_info",
     "register_directory",
     "list_allowed_directories",
@@ -393,6 +396,7 @@ const TOOL_CATEGORIES = {
     "directory_tree",
     "move_file",
     "file_operations",
+    "delete_files",
     "get_file_info",
     "register_directory",
     "list_allowed_directories",
@@ -497,6 +501,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "directory_tree":
       case "move_file":
       case "file_operations":
+      case "delete_files":
       case "get_file_info":
       case "register_directory":
       case "list_allowed_directories": {
