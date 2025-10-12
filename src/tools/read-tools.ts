@@ -64,18 +64,20 @@ export function getReadTools() {
     {
       name: "read_media_file",
       description:
-        "Read an image or audio file. Returns the base64 encoded data and MIME type. " +
+        "Process image and audio files by converting them to base64-encoded format. " +
+        "Returns the encoded data along with the detected MIME type for proper content handling. " +
+        "Supports common image formats (PNG, JPEG, GIF, WebP, BMP, SVG) and audio formats (MP3, WAV, OGG, FLAC). " +
         "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(ReadMediaFileArgsSchema) as ToolInput,
     },
     {
       name: "read_multiple_files",
       description:
-        "Read the contents of multiple files simultaneously. This is more " +
-        "efficient than reading files one by one when you need to analyze " +
-        "or compare multiple files. Each file's content is returned with its " +
-        "path as a reference. Failed reads for individual files won't stop " +
-        "the entire operation. Only works within allowed directories.",
+        "Batch read multiple files concurrently for improved performance. " +
+        "Ideal when analyzing or comparing several files at once, as it's significantly faster than sequential reads. " +
+        "Returns each file's content labeled with its path for easy identification. " +
+        "Resilient design ensures individual file errors don't halt the entire batch operation. " +
+        "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(ReadMultipleFilesArgsSchema) as ToolInput,
     },
   ];

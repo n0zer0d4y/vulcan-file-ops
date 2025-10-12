@@ -22,16 +22,18 @@ export function getWriteTools() {
     {
       name: "write_file",
       description:
-        "Create a new file or completely overwrite an existing file with new content. " +
-        "Use with caution as it will overwrite existing files without warning. " +
-        "Handles text content with proper encoding. Only works within allowed directories.",
+        "Create new files or replace existing file contents entirely. " +
+        "Warning: This operation overwrites files without confirmation, so use carefully. " +
+        "Processes text content with appropriate UTF-8 encoding for reliable storage. " +
+        "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(WriteFileArgsSchema) as ToolInput,
     },
     {
       name: "edit_file",
       description:
-        "Make line-based edits to a text file. Each edit replaces exact line sequences " +
-        "with new content. Returns a git-style diff showing the changes made. " +
+        "Apply precise line-based modifications to text files. " +
+        "Performs exact text substitution by matching and replacing specific line sequences. " +
+        "Provides git-style diff output showing exactly what changed for verification and review. " +
         "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(EditFileArgsSchema) as ToolInput,
     },
