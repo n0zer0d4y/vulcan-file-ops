@@ -266,7 +266,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **read_multiple_files**: Batch file reading with error isolation
 - **write_file**: Create or replace file content
 - **write_multiple_files**: Create or replace multiple files concurrently
-- **edit_file**: Perform precise text modifications with diff output
+- **edit_file**: Perform intelligent file modifications with three-tier matching (exact/flexible/fuzzy) and detailed diff output
 - **create_directory**: Generate directory structures with parent creation
 - **list_directory**: Display directory contents with type indicators
 - **list_directory_with_sizes**: Show directory contents with size information and sorting
@@ -325,6 +325,16 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - Operations: move, copy, rename
 - Handles both files and directories
 - Preserves file content without modification during operations
+
+#### File Editing
+
+**Edit File Tool** (`edit_file`):
+
+- Intelligent file modification with automatic matching strategies (exact → flexible → fuzzy)
+- Supports multiple sequential edits in one operation
+- Provides detailed diff output with statistics
+- Optional preview mode (`dryRun: true`)
+- Preserves indentation and line endings
 
 ### Search Tool Usage
 

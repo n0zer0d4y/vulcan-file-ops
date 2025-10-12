@@ -54,7 +54,13 @@ export const ReadMultipleFilesArgsSchema = z.object({
 
 export const WriteFileArgsSchema = z.object({
   path: z.string(),
-  content: z.string(),
+  content: z
+    .string()
+    .describe(
+      "File content to write. For multi-line content, use actual newlines in the string value, " +
+        "not escape sequences like \\n. Example: 'line1\\nline2' should be formatted as an actual " +
+        "multi-line string in JSON."
+    ),
 });
 
 export const WriteMultipleFilesArgsSchema = z.object({
@@ -62,7 +68,11 @@ export const WriteMultipleFilesArgsSchema = z.object({
     .array(
       z.object({
         path: z.string(),
-        content: z.string(),
+        content: z
+          .string()
+          .describe(
+            "File content to write. For multi-line content, use actual newlines, not \\n escape sequences."
+          ),
       })
     )
     .min(1, "At least one file must be provided")
@@ -71,17 +81,69 @@ export const WriteMultipleFilesArgsSchema = z.object({
 });
 
 export const EditOperation = z.object({
-  oldText: z.string().describe("Text to search for - must match exactly"),
-  newText: z.string().describe("Text to replace with"),
+  oldText: z
+    .string()
+    .describe(
+      "Text to search for - will try exact match first, then flexible matching. " +
+        "For multi-line searches, use actual newline characters, not \\n escape sequences. " +
+        "Include 3-5 lines of surrounding context for reliable matching."
+    ),
+  newText: z
+    .string()
+    .describe(
+      "Text to replace with. For multi-line replacements, use actual newline characters, not \\n escape sequences."
+    ),
+  instruction: z
+    .string()
+    .optional()
+    .describe(
+      "Optional: Semantic description of what this edit does and why. " +
+        "Example: 'Add timeout parameter to fetchData function for better error handling'. " +
+        "This helps provide better error messages if the edit fails."
+    ),
+  expectedOccurrences: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .default(1)
+    .describe(
+      "Expected number of occurrences to replace. Defaults to 1. " +
+        "Set to a specific number to validate the replacement count. " +
+        "The tool will fail if actual occurrences don't match this number."
+    ),
 }) satisfies z.ZodType<FileEdit>;
 
 export const EditFileArgsSchema = z.object({
   path: z.string(),
-  edits: z.array(EditOperation),
+  edits: z
+    .array(EditOperation)
+    .min(1, "At least one edit must be provided")
+    .describe("Array of edits to apply sequentially"),
   dryRun: z
     .boolean()
+    .optional()
     .default(false)
-    .describe("Preview changes using git-style diff format"),
+    .describe("Preview changes using git-style diff format without writing"),
+  matchingStrategy: z
+    .enum(["exact", "flexible", "fuzzy", "auto"])
+    .optional()
+    .default("auto")
+    .describe(
+      "Matching strategy:\n" +
+        "- 'exact': Strict character-for-character match (fastest, safest)\n" +
+        "- 'flexible': Whitespace-insensitive line-by-line matching\n" +
+        "- 'fuzzy': Token-based regex matching (most permissive)\n" +
+        "- 'auto': Try exact → flexible → fuzzy (recommended, default)"
+    ),
+  failOnAmbiguous: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      "If true, fail when oldText matches multiple locations (unless expectedOccurrences > 1). " +
+        "If false, replace first occurrence only and warn about ambiguity."
+    ),
 });
 
 export const CreateDirectoryArgsSchema = z.object({

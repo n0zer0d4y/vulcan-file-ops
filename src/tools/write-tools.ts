@@ -25,15 +25,44 @@ export function getWriteTools() {
         "Create new files or replace existing file contents entirely. " +
         "Warning: This operation overwrites files without confirmation, so use carefully. " +
         "Processes text content with appropriate UTF-8 encoding for reliable storage. " +
+        "\n\n" +
+        "IMPORTANT - Multi-line Content:\n" +
+        "- Use actual newline characters in the content string, NOT escape sequences like \\n\n" +
+        "- MCP/JSON will handle the encoding automatically\n" +
+        '- Incorrect: {"content": "line1\\nline2"} - this writes literal \\n characters\n' +
+        "- Correct: Use actual line breaks in your JSON string value\n" +
+        "\n" +
         "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(WriteFileArgsSchema) as ToolInput,
     },
     {
       name: "edit_file",
       description:
-        "Apply precise line-based modifications to text files. " +
-        "Performs exact text substitution by matching and replacing specific line sequences. " +
-        "Provides git-style diff output showing exactly what changed for verification and review. " +
+        "Apply precise modifications to text and code files with intelligent matching. " +
+        "Performs exact text substitution with automatic fallback to flexible whitespace-insensitive matching " +
+        "and fuzzy token-based matching for maximum reliability. " +
+        "Supports multiple sequential edits in a single operation. " +
+        "Provides detailed diff output with change statistics and strategy information. " +
+        "Preserves original file formatting including indentation and line endings. " +
+        "\n\n" +
+        "Matching Strategies (in order when using 'auto'):\n" +
+        "1. Exact: Character-for-character match (fastest, safest)\n" +
+        "2. Flexible: Whitespace-insensitive, preserves original indentation\n" +
+        "3. Fuzzy: Token-based regex matching for maximum compatibility\n" +
+        "\n" +
+        "Best Practices:\n" +
+        "- Include 3-5 lines of context before and after the change for reliability\n" +
+        "- Add 'instruction' field to describe the purpose of each edit\n" +
+        "- Use 'dryRun: true' to preview changes before applying\n" +
+        "- For multiple related changes, use array of edits (applied sequentially)\n" +
+        "- Set 'expectedOccurrences' to validate replacement count\n" +
+        "- Use 'matchingStrategy' to control matching behavior (defaults to 'auto')\n" +
+        "\n" +
+        "CRITICAL - Multi-line Content:\n" +
+        "- Use actual newline characters in oldText/newText strings, NOT \\n escape sequences\n" +
+        "- The MCP/JSON layer handles encoding automatically\n" +
+        "- Using \\n literally will search for/write backslash+n characters (wrong!)\n" +
+        "\n" +
         "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(EditFileArgsSchema) as ToolInput,
     },
@@ -43,7 +72,13 @@ export function getWriteTools() {
         "Write multiple files simultaneously with concurrent processing. " +
         "Each file operation is atomic and secure. Failed writes for individual " +
         "files won't stop other files from being written. Returns detailed " +
-        "results for each file operation. Only works within allowed directories.",
+        "results for each file operation. " +
+        "\n\n" +
+        "IMPORTANT - Multi-line Content:\n" +
+        "- Use actual newline characters in content strings, NOT \\n escape sequences\n" +
+        "- Each file's content will be written exactly as provided in the string\n" +
+        "\n" +
+        "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(WriteMultipleFilesArgsSchema) as ToolInput,
     },
   ];
@@ -74,7 +109,9 @@ export async function handleWriteTool(name: string, args: any) {
       const result = await applyFileEdits(
         validPath,
         parsed.data.edits,
-        parsed.data.dryRun
+        parsed.data.dryRun,
+        parsed.data.matchingStrategy,
+        parsed.data.failOnAmbiguous
       );
       return {
         content: [{ type: "text", text: result }],

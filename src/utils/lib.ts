@@ -159,6 +159,138 @@ export function normalizeLineEndings(text: string): string {
   return text.replace(/\r\n/g, "\n");
 }
 
+export function detectLineEnding(content: string): "\r\n" | "\n" {
+  return content.includes("\r\n") ? "\r\n" : "\n";
+}
+
+// Calculate diff statistics
+function calculateDiffStats(
+  original: string,
+  modified: string
+): {
+  added: number;
+  removed: number;
+  modified: number;
+} {
+  const originalLines = original.split("\n");
+  const modifiedLines = modified.split("\n");
+
+  let added = 0;
+  let removed = 0;
+
+  if (modifiedLines.length > originalLines.length) {
+    added = modifiedLines.length - originalLines.length;
+  } else if (originalLines.length > modifiedLines.length) {
+    removed = originalLines.length - modifiedLines.length;
+  }
+
+  // Count modified lines (lines that exist in both but are different)
+  const minLength = Math.min(originalLines.length, modifiedLines.length);
+  let modifiedCount = 0;
+  for (let i = 0; i < minLength; i++) {
+    if (originalLines[i] !== modifiedLines[i]) {
+      modifiedCount++;
+    }
+  }
+
+  return { added, removed, modified: modifiedCount };
+}
+
+// Format detailed diff output with edit summaries
+function formatDetailedDiff(
+  original: string,
+  modified: string,
+  filePath: string,
+  results: MatchResult[]
+): string {
+  let output = "";
+
+  // Edit Summary
+  if (results.length > 0) {
+    output += "Edit Summary:\n";
+    results.forEach((result, idx) => {
+      const editNum = results.length > 1 ? ` ${idx + 1}` : "";
+      output += `  Edit${editNum}:\n`;
+      output += `    Strategy: ${result.strategy}`;
+
+      // Add strategy description for non-exact matches
+      if (result.strategy === "flexible") {
+        output += " (whitespace-insensitive)";
+      } else if (result.strategy === "fuzzy") {
+        output += " (token-based pattern matching)";
+      }
+      output += "\n";
+
+      output += `    ${result.message}\n`;
+
+      if (result.lineRange) {
+        const lineDesc =
+          result.lineRange.start === result.lineRange.end
+            ? `line ${result.lineRange.start}`
+            : `lines ${result.lineRange.start}-${result.lineRange.end}`;
+        output += `    Location: ${lineDesc}\n`;
+      }
+
+      if (result.warning) {
+        output += `    ⚠️  Warning: ${result.warning}\n`;
+      }
+
+      if (result.ambiguity) {
+        output += `    ⚠️  Multiple matches found at ${result.ambiguity.locations}\n`;
+        output += `        Replaced first occurrence only\n`;
+        output += `        ${result.ambiguity.suggestion}\n`;
+      }
+    });
+    output += "\n";
+  }
+
+  // Diff Statistics
+  const stats = calculateDiffStats(original, modified);
+  const totalChanges = stats.added + stats.removed + stats.modified;
+
+  if (totalChanges > 0) {
+    output += "Diff Statistics:\n";
+    if (stats.added > 0) {
+      output += `  +${stats.added} line${stats.added !== 1 ? "s" : ""} added\n`;
+    }
+    if (stats.removed > 0) {
+      output += `  -${stats.removed} line${
+        stats.removed !== 1 ? "s" : ""
+      } removed\n`;
+    }
+    if (stats.modified > 0) {
+      output += `  ~${stats.modified} line${
+        stats.modified !== 1 ? "s" : ""
+      } modified\n`;
+    }
+    output += `  Total: ${totalChanges} line${
+      totalChanges !== 1 ? "s" : ""
+    } changed\n\n`;
+  }
+
+  // Unified Diff
+  const diff = createUnifiedDiff(original, modified, filePath);
+  output += diff;
+
+  // Notes
+  const usedNonExact = results.some((r) => r.strategy !== "exact");
+  const hasWarnings = results.some((r) => r.warning);
+
+  if (usedNonExact || hasWarnings) {
+    output += "\n\n";
+    if (usedNonExact) {
+      output +=
+        "📝 Note: Non-exact matching strategies were used. Changes were applied successfully.\n";
+    }
+    if (hasWarnings) {
+      output +=
+        "⚠️  Please review the changes carefully to ensure they match your intentions.\n";
+    }
+  }
+
+  return output;
+}
+
 export function createUnifiedDiff(
   originalContent: string,
   newContent: string,
@@ -293,92 +425,413 @@ export async function writeFileContent(
 export interface FileEdit {
   oldText: string;
   newText: string;
+  instruction?: string;
+  expectedOccurrences?: number;
+}
+
+interface MatchResult {
+  strategy: "exact" | "flexible" | "fuzzy";
+  occurrences: number;
+  modifiedContent: string;
+  message: string;
+  warning?: string;
+  ambiguity?: {
+    locations: string;
+    suggestion: string;
+  };
+  lineRange?: {
+    start: number;
+    end: number;
+  };
+}
+
+// Helper function to escape regex special characters
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Tier 1: Exact Match
+function tryExactMatch(
+  content: string,
+  oldText: string,
+  newText: string
+): MatchResult | null {
+  const searchText = normalizeLineEndings(oldText);
+  const replaceText = normalizeLineEndings(newText);
+
+  // Count occurrences
+  const escapedSearch = escapeRegex(searchText);
+  const occurrences = (content.match(new RegExp(escapedSearch, "g")) || [])
+    .length;
+
+  if (occurrences === 0) {
+    return null;
+  }
+
+  // Replace first occurrence only
+  const modified = content.replace(searchText, replaceText);
+
+  // Find the line number where the match occurred
+  const matchIndex = content.indexOf(searchText);
+  const linesBeforeMatch = content.substring(0, matchIndex).split("\n").length;
+
+  return {
+    strategy: "exact",
+    occurrences,
+    modifiedContent: modified,
+    message: `Exact match found (${occurrences} occurrence${
+      occurrences > 1 ? "s" : ""
+    })`,
+    lineRange: {
+      start: linesBeforeMatch,
+      end: linesBeforeMatch + searchText.split("\n").length - 1,
+    },
+    ambiguity:
+      occurrences > 1
+        ? {
+            locations: `${occurrences} locations in file`,
+            suggestion:
+              "Consider adding more context to oldText to uniquely identify the target",
+          }
+        : undefined,
+  };
+}
+
+// Tier 2: Flexible Match (whitespace-insensitive)
+function tryFlexibleMatch(
+  content: string,
+  oldText: string,
+  newText: string
+): MatchResult | null {
+  const contentLines = content.split("\n");
+  const searchLines = oldText.split("\n");
+  const replaceLines = newText.split("\n");
+
+  const matches: Array<{
+    startLine: number;
+    endLine: number;
+    indentation: string;
+  }> = [];
+
+  // Find all matching windows
+  for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+    const window = contentLines.slice(i, i + searchLines.length);
+
+    // Compare with trimmed content (whitespace-insensitive)
+    const isMatch = searchLines.every(
+      (searchLine, j) => searchLine.trim() === window[j].trim()
+    );
+
+    if (isMatch) {
+      const indentation = window[0].match(/^(\s*)/)?.[0] || "";
+      matches.push({
+        startLine: i + 1,
+        endLine: i + searchLines.length,
+        indentation,
+      });
+    }
+  }
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  // Apply replacement to first match, preserving indentation
+  const firstMatch = matches[0];
+  const indentedReplaceLines = replaceLines.map((line) => {
+    if (line.trim() === "") return ""; // Preserve empty lines
+    return firstMatch.indentation + line.trim();
+  });
+
+  contentLines.splice(
+    firstMatch.startLine - 1,
+    firstMatch.endLine - firstMatch.startLine + 1,
+    ...indentedReplaceLines
+  );
+
+  return {
+    strategy: "flexible",
+    occurrences: matches.length,
+    modifiedContent: contentLines.join("\n"),
+    message: `Flexible match found at line ${firstMatch.startLine} (${
+      matches.length
+    } total occurrence${matches.length > 1 ? "s" : ""})`,
+    lineRange: {
+      start: firstMatch.startLine,
+      end: firstMatch.endLine,
+    },
+    ambiguity:
+      matches.length > 1
+        ? {
+            locations: matches
+              .map((m) => `lines ${m.startLine}-${m.endLine}`)
+              .join(", "),
+            suggestion:
+              "Consider adding more context to oldText to uniquely identify the target",
+          }
+        : undefined,
+  };
+}
+
+// Tier 3: Fuzzy Match (token-based regex)
+function tryFuzzyMatch(
+  content: string,
+  oldText: string,
+  newText: string
+): MatchResult | null {
+  // Tokenize around code delimiters
+  const delimiters = [
+    "(",
+    ")",
+    ":",
+    "[",
+    "]",
+    "{",
+    "}",
+    ">",
+    "<",
+    "=",
+    ";",
+    ",",
+  ];
+
+  let tokenizedSearch = oldText;
+  for (const delim of delimiters) {
+    tokenizedSearch = tokenizedSearch.split(delim).join(` ${delim} `);
+  }
+
+  // Split on whitespace and filter empties
+  const tokens = tokenizedSearch.split(/\s+/).filter(Boolean);
+
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  // Build regex: tokens separated by flexible whitespace
+  const escapedTokens = tokens.map((t) => escapeRegex(t));
+  const pattern = `^(\\s*)${escapedTokens.join("\\s*")}`;
+  const fuzzyRegex = new RegExp(pattern, "m");
+
+  const match = fuzzyRegex.exec(content);
+
+  if (!match) {
+    return null;
+  }
+
+  const matchedText = match[0];
+  const indentation = match[1] || "";
+
+  // Apply indentation to replacement
+  const replaceLines = newText.split("\n");
+  const indentedReplace = replaceLines
+    .map((line) => {
+      if (line.trim() === "") return "";
+      return indentation + line.trim();
+    })
+    .join("\n");
+
+  const modified = content.replace(fuzzyRegex, indentedReplace);
+
+  // Calculate approximate position
+  const linesBeforeMatch = content.substring(0, match.index).split("\n").length;
+
+  return {
+    strategy: "fuzzy",
+    occurrences: 1, // Fuzzy match only replaces first occurrence
+    modifiedContent: modified,
+    message: `Fuzzy match found near line ${linesBeforeMatch}`,
+    lineRange: {
+      start: linesBeforeMatch,
+      end: linesBeforeMatch + matchedText.split("\n").length - 1,
+    },
+    warning:
+      "Fuzzy matching was used. Please review changes carefully to ensure accuracy.",
+  };
+}
+
+// Apply edit with strategy selection
+function applyEditWithStrategy(
+  content: string,
+  edit: FileEdit,
+  strategy: "exact" | "flexible" | "fuzzy" | "auto",
+  failOnAmbiguous: boolean
+): MatchResult {
+  let result: MatchResult | null = null;
+  const attemptedStrategies: string[] = [];
+
+  if (strategy === "auto") {
+    // Try each strategy in order
+    result = tryExactMatch(content, edit.oldText, edit.newText);
+    if (result) {
+      if (
+        failOnAmbiguous &&
+        result.occurrences > 1 &&
+        (!edit.expectedOccurrences || edit.expectedOccurrences === 1)
+      ) {
+        throw new Error(
+          `Ambiguous match: found ${result.occurrences} occurrences of the search text.\n` +
+            (edit.instruction ? `Edit: ${edit.instruction}\n` : "") +
+            `Locations: ${result.ambiguity?.locations || "multiple"}\n` +
+            `Suggestion: ${
+              result.ambiguity?.suggestion ||
+              "Add more context to uniquely identify the target"
+            }`
+        );
+      }
+      return result;
+    }
+    attemptedStrategies.push("exact");
+
+    result = tryFlexibleMatch(content, edit.oldText, edit.newText);
+    if (result) {
+      if (
+        failOnAmbiguous &&
+        result.occurrences > 1 &&
+        (!edit.expectedOccurrences || edit.expectedOccurrences === 1)
+      ) {
+        throw new Error(
+          `Ambiguous match: found ${result.occurrences} occurrences of the search text.\n` +
+            (edit.instruction ? `Edit: ${edit.instruction}\n` : "") +
+            `Locations: ${result.ambiguity?.locations || "multiple"}\n` +
+            `Suggestion: ${
+              result.ambiguity?.suggestion ||
+              "Add more context to uniquely identify the target"
+            }`
+        );
+      }
+      return result;
+    }
+    attemptedStrategies.push("flexible");
+
+    result = tryFuzzyMatch(content, edit.oldText, edit.newText);
+    if (result) return result;
+    attemptedStrategies.push("fuzzy");
+  } else {
+    // Use specified strategy only
+    switch (strategy) {
+      case "exact":
+        result = tryExactMatch(content, edit.oldText, edit.newText);
+        attemptedStrategies.push("exact");
+        break;
+      case "flexible":
+        result = tryFlexibleMatch(content, edit.oldText, edit.newText);
+        attemptedStrategies.push("flexible");
+        break;
+      case "fuzzy":
+        result = tryFuzzyMatch(content, edit.oldText, edit.newText);
+        attemptedStrategies.push("fuzzy");
+        break;
+    }
+
+    if (
+      result &&
+      failOnAmbiguous &&
+      result.occurrences > 1 &&
+      (!edit.expectedOccurrences || edit.expectedOccurrences === 1)
+    ) {
+      throw new Error(
+        `Ambiguous match: found ${result.occurrences} occurrences of the search text.\n` +
+          (edit.instruction ? `Edit: ${edit.instruction}\n` : "") +
+          `Locations: ${result.ambiguity?.locations || "multiple"}\n` +
+          `Suggestion: ${
+            result.ambiguity?.suggestion ||
+            "Add more context to uniquely identify the target"
+          }`
+      );
+    }
+  }
+
+  // No match found - throw error
+  if (!result) {
+    let errorMsg = "Failed to apply edit";
+    if (edit.instruction) {
+      errorMsg += `\nEdit goal: ${edit.instruction}`;
+    }
+    errorMsg += `\n\nSearched for:\n${edit.oldText}\n`;
+    errorMsg += `\nAttempted strategies: ${attemptedStrategies.join(", ")}`;
+    errorMsg += `\n\nTroubleshooting tips:`;
+    errorMsg += `\n- Ensure oldText matches the file content exactly (check whitespace, indentation)`;
+    errorMsg += `\n- Use the read_file tool to verify current file content`;
+    errorMsg += `\n- Include 3-5 lines of context before and after the target change`;
+    errorMsg += `\n- Try matchingStrategy: "flexible" if whitespace is the issue`;
+
+    throw new Error(errorMsg);
+  }
+
+  // Validate occurrence count
+  if (
+    edit.expectedOccurrences &&
+    result.occurrences !== edit.expectedOccurrences
+  ) {
+    throw new Error(
+      `Expected ${edit.expectedOccurrences} occurrence(s) but found ${result.occurrences}\n` +
+        (edit.instruction ? `Edit: ${edit.instruction}\n` : "") +
+        `Strategy used: ${result.strategy}`
+    );
+  }
+
+  return result;
 }
 
 export async function applyFileEdits(
   filePath: string,
   edits: FileEdit[],
-  dryRun: boolean = false
+  dryRun: boolean = false,
+  matchingStrategy: "exact" | "flexible" | "fuzzy" | "auto" = "auto",
+  failOnAmbiguous: boolean = true
 ): Promise<string> {
-  // Read file content and normalize line endings
-  const content = normalizeLineEndings(await fs.readFile(filePath, "utf-8"));
+  // Read file content and detect original line ending
+  const rawContent = await fs.readFile(filePath, "utf-8");
+  const originalLineEnding = detectLineEnding(rawContent);
 
-  // Apply edits sequentially
+  // Normalize line endings for processing
+  const content = normalizeLineEndings(rawContent);
+
+  // Apply edits sequentially, tracking results
   let modifiedContent = content;
+  const editResults: MatchResult[] = [];
+
   for (const edit of edits) {
-    const normalizedOld = normalizeLineEndings(edit.oldText);
-    const normalizedNew = normalizeLineEndings(edit.newText);
-
-    // If exact match exists, use it
-    if (modifiedContent.includes(normalizedOld)) {
-      modifiedContent = modifiedContent.replace(normalizedOld, normalizedNew);
-      continue;
-    }
-
-    // Otherwise, try line-by-line matching with flexibility for whitespace
-    const oldLines = normalizedOld.split("\n");
-    const contentLines = modifiedContent.split("\n");
-    let matchFound = false;
-
-    for (let i = 0; i <= contentLines.length - oldLines.length; i++) {
-      const potentialMatch = contentLines.slice(i, i + oldLines.length);
-
-      // Compare lines with normalized whitespace
-      const isMatch = oldLines.every((oldLine, j) => {
-        const contentLine = potentialMatch[j];
-        return oldLine.trim() === contentLine.trim();
-      });
-
-      if (isMatch) {
-        // Preserve original indentation of first line
-        const originalIndent = contentLines[i].match(/^\s*/)?.[0] || "";
-        const newLines = normalizedNew.split("\n").map((line, j) => {
-          if (j === 0) return originalIndent + line.trimStart();
-          // For subsequent lines, try to preserve relative indentation
-          const oldIndent = oldLines[j]?.match(/^\s*/)?.[0] || "";
-          const newIndent = line.match(/^\s*/)?.[0] || "";
-          if (oldIndent && newIndent) {
-            const relativeIndent = newIndent.length - oldIndent.length;
-            return (
-              originalIndent +
-              " ".repeat(Math.max(0, relativeIndent)) +
-              line.trimStart()
-            );
-          }
-          return line;
-        });
-
-        contentLines.splice(i, oldLines.length, ...newLines);
-        modifiedContent = contentLines.join("\n");
-        matchFound = true;
-        break;
-      }
-    }
-
-    if (!matchFound) {
-      throw new Error(`Could not find exact match for edit:\n${edit.oldText}`);
-    }
+    const result = applyEditWithStrategy(
+      modifiedContent,
+      edit,
+      matchingStrategy,
+      failOnAmbiguous
+    );
+    editResults.push(result);
+    modifiedContent = result.modifiedContent;
   }
 
-  // Create unified diff
-  const diff = createUnifiedDiff(content, modifiedContent, filePath);
+  // Create detailed diff output with edit summaries
+  const detailedDiff = formatDetailedDiff(
+    content,
+    modifiedContent,
+    filePath,
+    editResults
+  );
 
   // Format diff with appropriate number of backticks
   let numBackticks = 3;
-  while (diff.includes("`".repeat(numBackticks))) {
+  while (detailedDiff.includes("`".repeat(numBackticks))) {
     numBackticks++;
   }
-  const formattedDiff = `${"`".repeat(numBackticks)}diff\n${diff}${"`".repeat(
+  const formattedDiff = `${"`".repeat(
     numBackticks
-  )}\n\n`;
+  )}diff\n${detailedDiff}${"`".repeat(numBackticks)}\n\n`;
 
   if (!dryRun) {
+    // Restore original line endings before writing
+    const contentToWrite =
+      originalLineEnding === "\r\n"
+        ? modifiedContent.replace(/\n/g, "\r\n")
+        : modifiedContent;
+
     // Security: Use atomic rename to prevent race conditions where symlinks
     // could be created between validation and write. Rename operations
     // replace the target file atomically and don't follow symlinks.
     const tempPath = `${filePath}.${randomBytes(16).toString("hex")}.tmp`;
     try {
-      await fs.writeFile(tempPath, modifiedContent, "utf-8");
+      await fs.writeFile(tempPath, contentToWrite, "utf-8");
       await fs.rename(tempPath, filePath);
     } catch (error) {
       try {
