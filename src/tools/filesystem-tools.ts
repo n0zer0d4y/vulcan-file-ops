@@ -13,6 +13,7 @@ import {
   GetFileInfoArgsSchema,
   RegisterDirectoryArgsSchema,
   FileOperationsArgsSchema,
+  DeleteFilesArgsSchema,
   type CreateDirectoryArgs,
   type ListDirectoryArgs,
   type ListDirectoryWithSizesArgs,
@@ -21,6 +22,7 @@ import {
   type GetFileInfoArgs,
   type RegisterDirectoryArgs,
   type FileOperationsArgs,
+  type DeleteFilesArgs,
 } from "../types/index.js";
 import {
   validatePath,
@@ -177,6 +179,17 @@ export function getFileSystemTools() {
         required: ["operation", "files"],
         additionalProperties: false,
       } as ToolInput,
+    },
+    {
+      name: "delete_files",
+      description:
+        "Delete single or multiple files and directories securely. " +
+        "Supports recursive directory deletion with safety controls. " +
+        "All paths are validated before deletion begins. " +
+        "Operations are processed concurrently for performance. " +
+        "Maximum 100 paths per operation. " +
+        "Only works within allowed directories.",
+      inputSchema: zodToJsonSchema(DeleteFilesArgsSchema) as ToolInput,
     },
   ];
 }
@@ -663,6 +676,191 @@ export async function handleFileSystemTool(name: string, args: any) {
                 ? `Failed operations:\n${failureDetails}\n\n`
                 : "") +
               `Processed files:\n${successDetails}`,
+          },
+        ],
+      };
+    }
+
+    case "delete_files": {
+      const parsed = DeleteFilesArgsSchema.safeParse(args);
+      if (!parsed.success) {
+        throw new Error(`Invalid arguments for delete_files: ${parsed.error}`);
+      }
+
+      // Phase 1: Path Validation
+      const validationPromises = parsed.data.paths.map(
+        async (filePath, index) => {
+          try {
+            const validPath = await validatePath(filePath);
+            return {
+              index,
+              originalPath: filePath,
+              validPath,
+              success: true,
+            };
+          } catch (error) {
+            return {
+              index,
+              originalPath: filePath,
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        }
+      );
+
+      const validatedPaths = await Promise.all(validationPromises);
+
+      // Check for validation errors
+      const validationErrors = validatedPaths.filter((p) => !p.success);
+      if (validationErrors.length > 0) {
+        const errorMessages = validationErrors
+          .map((p) => `${p.originalPath}: ${p.error || "Unknown error"}`)
+          .join("\n");
+        throw new Error(`Path validation failed:\n${errorMessages}`);
+      }
+
+      // Phase 2: Pre-deletion Checks
+      const preCheckPromises = validatedPaths.map(async (item) => {
+        try {
+          const stats = await fs.stat(item.validPath!);
+          return {
+            ...item,
+            exists: true,
+            isDirectory: stats.isDirectory(),
+          };
+        } catch (error) {
+          return {
+            ...item,
+            exists: false,
+            isDirectory: false,
+            error: `File does not exist: ${item.originalPath}`,
+          };
+        }
+      });
+
+      const checkedPaths = await Promise.all(preCheckPromises);
+
+      // Filter out non-existent paths
+      const pathsToDelete = checkedPaths.filter((p) => p.exists);
+
+      if (pathsToDelete.length === 0) {
+        throw new Error(
+          "No valid paths to delete - all paths either don't exist or failed validation"
+        );
+      }
+
+      // Phase 3: Execute Deletions
+      const deletionPromises = pathsToDelete.map(async (item) => {
+        try {
+          if (item.isDirectory) {
+            if (parsed.data.recursive) {
+              // Recursive directory deletion
+              await fs.rm(item.validPath!, {
+                recursive: true,
+                force: parsed.data.force,
+              });
+            } else {
+              // Non-recursive - only delete empty directories
+              await fs.rmdir(item.validPath!);
+            }
+          } else {
+            // File deletion
+            await fs.unlink(item.validPath!);
+          }
+          return {
+            index: item.index,
+            path: item.originalPath,
+            success: true,
+            isDirectory: item.isDirectory,
+          };
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          // Provide helpful error messages
+          let friendlyError = errorMessage;
+          if (
+            errorMessage.includes("ENOTEMPTY") ||
+            errorMessage.includes("directory not empty")
+          ) {
+            friendlyError = `Directory not empty. Use recursive: true to delete non-empty directories.`;
+          } else if (
+            errorMessage.includes("EACCES") ||
+            errorMessage.includes("EPERM")
+          ) {
+            friendlyError = `Permission denied. ${
+              parsed.data.force
+                ? "Insufficient permissions even with force enabled."
+                : "Try using force: true if appropriate."
+            }`;
+          }
+
+          return {
+            index: item.index,
+            path: item.originalPath,
+            success: false,
+            error: friendlyError,
+            isDirectory: item.isDirectory || false,
+          };
+        }
+      });
+
+      const results = await Promise.allSettled(deletionPromises);
+
+      // Process results
+      const processedResults = results.map((result, index) => {
+        if (result.status === "fulfilled") {
+          return result.value;
+        } else {
+          return {
+            index,
+            path: pathsToDelete[index].originalPath,
+            success: false,
+            isDirectory: pathsToDelete[index].isDirectory || false,
+            error:
+              result.reason instanceof Error
+                ? result.reason.message
+                : String(result.reason),
+          };
+        }
+      });
+
+      // Prepare response
+      const successful = processedResults.filter((r) => r.success);
+      const failed = processedResults.filter((r) => !r.success);
+
+      const successDetails = successful
+        .map((r) => `✓ ${r.path}${r.isDirectory ? " (directory)" : ""}`)
+        .join("\n");
+
+      const failureDetails =
+        failed.length > 0
+          ? failed.map((r) => `✗ ${r.path}: ${r.error}`).join("\n")
+          : "";
+
+      // Build response message
+      const responseLines = [
+        `Successfully deleted ${successful.length} of ${processedResults.length} paths:`,
+        "",
+        `Total paths: ${processedResults.length}`,
+        `Successful: ${successful.length}`,
+        `Failed: ${failed.length}`,
+        "",
+      ];
+
+      if (failed.length > 0) {
+        responseLines.push(`Failed deletions:`, failureDetails, "");
+      }
+
+      if (successful.length > 0) {
+        responseLines.push(`Deleted paths:`, successDetails);
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: responseLines.join("\n"),
           },
         ],
       };

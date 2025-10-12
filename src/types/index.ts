@@ -170,6 +170,24 @@ export const FileOperationsArgsSchema = z.object({
     .describe("How to handle destination conflicts"),
 });
 
+export const DeleteFilesArgsSchema = z.object({
+  paths: z
+    .array(z.string())
+    .min(1, "At least one path must be provided")
+    .max(100, "Maximum 100 files per operation")
+    .describe("Array of file or directory paths to delete"),
+  recursive: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Enable recursive deletion for directories"),
+  force: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Force deletion even if files are read-only"),
+});
+
 // Type exports
 export type ReadFileArgs = z.infer<typeof ReadFileArgsSchema>;
 export type ReadMediaFileArgs = z.infer<typeof ReadMediaFileArgsSchema>;
@@ -192,3 +210,4 @@ export type GrepArgs = z.infer<typeof GrepArgsSchema>;
 export type GetFileInfoArgs = z.infer<typeof GetFileInfoArgsSchema>;
 export type RegisterDirectoryArgs = z.infer<typeof RegisterDirectoryArgsSchema>;
 export type FileOperationsArgs = z.infer<typeof FileOperationsArgsSchema>;
+export type DeleteFilesArgs = z.infer<typeof DeleteFilesArgsSchema>;
