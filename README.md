@@ -36,12 +36,13 @@ This enhanced implementation provides:
 
 ### Directory Access Model
 
-Unlike traditional static configurations, this server enables dynamic directory access through:
+This server supports multiple flexible approaches to directory access:
 
-1. **Runtime Registration**: Users can instruct AI agents to register directories during conversation
-2. **Flexible Permissions**: Access any directory by registering it first
-3. **Secure Boundaries**: All operations validate against registered directories
-4. **No Pre-configuration**: Start with minimal setup, expand access as needed
+1. **Pre-configured Access**: Use `--approved-folders` to specify directories on server start for immediate access
+2. **Runtime Registration**: Users can instruct AI agents to register directories during conversation via `register_directory` tool
+3. **MCP Roots Protocol**: Client applications can provide workspace directories dynamically
+4. **Flexible Permissions**: Combine multiple approaches - start with approved folders, add more at runtime
+5. **Secure Boundaries**: All operations validate against registered directories regardless of access method
 
 ## Install
 
@@ -78,6 +79,82 @@ Add to your MCP client configuration (e.g., `claude_desktop_config.json`):
 ```
 
 ### Advanced Configuration
+
+#### Approved Folders
+
+Pre-configure specific directories for immediate access on server start:
+
+**macOS/Linux:**
+
+```json
+{
+  "mcpServers": {
+    "filesystem-of-a-down": {
+      "command": "filesystem-of-a-down",
+      "args": [
+        "--approved-folders",
+        "/Users/username/projects,/Users/username/documents"
+      ]
+    }
+  }
+}
+```
+
+**Windows:**
+
+```json
+{
+  "mcpServers": {
+    "filesystem-of-a-down": {
+      "command": "filesystem-of-a-down",
+      "args": [
+        "--approved-folders",
+        "C:/Users/username/projects,C:/Users/username/documents"
+      ]
+    }
+  }
+}
+```
+
+**Path Format Note:**
+
+- **Windows**: Include drive letter (e.g., `C:/`, `D:/`). Use forward slashes in JSON to avoid escaping backslashes.
+- **macOS/Linux**: Start with `/` for absolute paths, or use `~` for home directory.
+
+**Benefits:**
+
+- **Instant Access**: Directories are validated and ready immediately when server starts
+- **Security**: Only specified directories are accessible (unless using MCP Roots protocol)
+- **Convenience**: No need to manually register directories via conversation
+- **AI Visibility**: Approved directories are dynamically embedded in `register_directory` and `list_allowed_directories` tool descriptions, ensuring AI assistants can see which directories are pre-approved and avoid redundant registration attempts
+
+**How AI Assistants See Approved Folders:**
+
+When you configure `--approved-folders`, the server dynamically injects this information into the tool descriptions for `register_directory` and `list_allowed_directories`. This ensures:
+
+- ✅ AI assistants can see which directories are already accessible
+- ✅ AI knows NOT to re-register pre-approved directories or their subdirectories
+- ✅ Clear visibility without requiring the AI to call `list_allowed_directories` first
+- ✅ Works reliably across all MCP clients (including Cursor, Claude Desktop, etc.)
+
+**Example of what AI sees in tool description:**
+
+```
+PRE-APPROVED DIRECTORIES (already accessible, DO NOT register these):
+  - C:\Users\username\projects
+  - C:\Users\username\documents
+
+IMPORTANT: These directories and their subdirectories are ALREADY accessible
+to all filesystem tools. Do NOT use register_directory for these paths.
+```
+
+**Notes:**
+
+- **Paths must be absolute**: Windows requires drive letter (`C:/path`), Unix/Mac starts with `/` or `~`
+- Comma-separated list of directories (no spaces unless part of path)
+- Directories are validated on startup; server will exit if any path is invalid
+- Works alongside runtime `register_directory` tool for additional access
+- MCP Roots protocol (if used by client) will replace approved folders with workspace roots
 
 #### Directory Filtering
 
@@ -124,18 +201,46 @@ Or enable individual tools:
 
 #### Combined Configuration
 
+All configuration options can be combined:
+
+**Windows Example:**
+
 ```json
 {
   "mcpServers": {
     "filesystem-of-a-down": {
       "command": "filesystem-of-a-down",
       "args": [
+        "--approved-folders",
+        "C:/Users/username/projects,C:/Users/username/documents",
         "--ignored-folders",
         "node_modules,dist,.git",
         "--enabled-tool-categories",
-        "read",
+        "read,filesystem",
         "--enabled-tools",
-        "list_directory,search_files"
+        "list_directory,search_files,register_directory"
+      ]
+    }
+  }
+}
+```
+
+**macOS/Linux Example:**
+
+```json
+{
+  "mcpServers": {
+    "filesystem-of-a-down": {
+      "command": "filesystem-of-a-down",
+      "args": [
+        "--approved-folders",
+        "/Users/username/projects,/Users/username/documents",
+        "--ignored-folders",
+        "node_modules,dist,.git",
+        "--enabled-tool-categories",
+        "read,filesystem",
+        "--enabled-tools",
+        "list_directory,search_files,register_directory"
       ]
     }
   }

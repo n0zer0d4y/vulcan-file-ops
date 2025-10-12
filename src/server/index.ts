@@ -18,6 +18,7 @@ import { normalizePath, expandHome } from "../utils/path-utils.js";
 import { getValidRootDirectories } from "../utils/roots-utils.js";
 import {
   setAllowedDirectories,
+  getAllowedDirectories,
   setIgnoredFolders,
   setEnabledTools,
 } from "../utils/lib.js";
@@ -30,6 +31,7 @@ import { getSearchTools } from "../tools/search-tools.js";
 
 // Configuration storage
 let allowedDirectories: string[] = [];
+let approvedFoldersFromArgs: string[] = [];
 let ignoredFolders: string[] = [];
 let enabledToolCategories: string[] = [];
 let enabledTools: string[] = [];
@@ -41,12 +43,29 @@ function parseArguments() {
   let parsingIgnoredFolders = false;
   let parsingEnabledToolCategories = false;
   let parsingEnabledTools = false;
+  let parsingApprovedFolders = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
 
+    if (arg === "--approved-folders") {
+      parsingApprovedFolders = true;
+      parsingIgnoredFolders = false;
+      parsingEnabledToolCategories = false;
+      parsingEnabledTools = false;
+      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        approvedFoldersFromArgs = args[i + 1]
+          .split(",")
+          .map((f) => f.trim())
+          .filter((f) => f.length > 0);
+        i++; // Skip the next argument as it's been consumed
+      }
+      continue;
+    }
+
     if (arg === "--ignored-folders") {
       parsingIgnoredFolders = true;
+      parsingApprovedFolders = false;
       parsingEnabledToolCategories = false;
       parsingEnabledTools = false;
       if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
@@ -62,6 +81,7 @@ function parseArguments() {
     if (arg === "--enabled-tool-categories") {
       parsingEnabledToolCategories = true;
       parsingIgnoredFolders = false;
+      parsingApprovedFolders = false;
       parsingEnabledTools = false;
       if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
         enabledToolCategories = args[i + 1]
@@ -76,6 +96,7 @@ function parseArguments() {
     if (arg === "--enabled-tools") {
       parsingEnabledTools = true;
       parsingIgnoredFolders = false;
+      parsingApprovedFolders = false;
       parsingEnabledToolCategories = false;
       if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
         enabledTools = args[i + 1]
@@ -90,6 +111,7 @@ function parseArguments() {
     // If we're not parsing a flag value, treat as directory
     if (
       !parsingIgnoredFolders &&
+      !parsingApprovedFolders &&
       !parsingEnabledToolCategories &&
       !parsingEnabledTools
     ) {
@@ -98,6 +120,7 @@ function parseArguments() {
 
     // Reset parsing flags
     parsingIgnoredFolders = false;
+    parsingApprovedFolders = false;
     parsingEnabledToolCategories = false;
     parsingEnabledTools = false;
   }
@@ -107,70 +130,150 @@ function parseArguments() {
 
 const directoryArgs = parseArguments();
 
-// Display configuration info
-if (
-  directoryArgs.length > 0 ||
-  ignoredFolders.length > 0 ||
-  enabledToolCategories.length > 0 ||
-  enabledTools.length > 0
-) {
-  console.error("Configuration:");
-  if (directoryArgs.length > 0) {
-    console.error(`  Directories: ${directoryArgs.join(", ")}`);
+// Async initialization function to be called in runServer()
+async function initializeDirectories() {
+  // Display configuration info
+  if (
+    approvedFoldersFromArgs.length > 0 ||
+    directoryArgs.length > 0 ||
+    ignoredFolders.length > 0 ||
+    enabledToolCategories.length > 0 ||
+    enabledTools.length > 0
+  ) {
+    console.error("Configuration:");
+    if (approvedFoldersFromArgs.length > 0) {
+      console.error(
+        `  Approved folders: ${approvedFoldersFromArgs.join(", ")}`
+      );
+    }
+    if (directoryArgs.length > 0) {
+      console.error(`  Directories: ${directoryArgs.join(", ")}`);
+    }
+    if (ignoredFolders.length > 0) {
+      console.error(`  Ignored folders: ${ignoredFolders.join(", ")}`);
+    }
+    if (enabledToolCategories.length > 0) {
+      console.error(
+        `  Enabled tool categories: ${enabledToolCategories.join(", ")}`
+      );
+    }
+    if (enabledTools.length > 0) {
+      console.error(`  Enabled tools: ${enabledTools.join(", ")}`);
+    }
+    console.error("");
   }
-  if (ignoredFolders.length > 0) {
-    console.error(`  Ignored folders: ${ignoredFolders.join(", ")}`);
-  }
-  if (enabledToolCategories.length > 0) {
+
+  // Process approved folders from CLI arguments (--approved-folders)
+  if (approvedFoldersFromArgs.length > 0) {
+    // Store approved directories in normalized and resolved form
+    allowedDirectories = await Promise.all(
+      approvedFoldersFromArgs.map(async (dir) => {
+        const expanded = expandHome(dir);
+        const absolute = path.resolve(expanded);
+        try {
+          // Security: Resolve symlinks in allowed directories during startup
+          // This ensures we know the real paths and can validate against them later
+          const resolved = await fs.realpath(absolute);
+          return normalizePath(resolved);
+        } catch (error) {
+          // If we can't resolve (doesn't exist), use the normalized absolute path
+          // This allows configuring allowed dirs that will be created later
+          return normalizePath(absolute);
+        }
+      })
+    );
+
+    // Validate that all approved directories exist and are accessible
+    await Promise.all(
+      allowedDirectories.map(async (dir) => {
+        try {
+          const stats = await fs.stat(dir);
+          if (!stats.isDirectory()) {
+            console.error(`Error: Approved folder ${dir} is not a directory`);
+            process.exit(1);
+          }
+        } catch (error) {
+          console.error(`Error accessing approved folder ${dir}:`, error);
+          process.exit(1);
+        }
+      })
+    );
+
     console.error(
-      `  Enabled tool categories: ${enabledToolCategories.join(", ")}`
+      `Initialized with ${allowedDirectories.length} approved ${
+        allowedDirectories.length === 1 ? "directory" : "directories"
+      }`
     );
   }
-  if (enabledTools.length > 0) {
-    console.error(`  Enabled tools: ${enabledTools.join(", ")}`);
+
+  // Handle legacy positional directory arguments (backward compatibility)
+  // Note: --approved-folders is the preferred method for specifying directories
+  if (directoryArgs.length > 0) {
+    const legacyDirectories = await Promise.all(
+      directoryArgs.map(async (dir) => {
+        const expanded = expandHome(dir);
+        const absolute = path.resolve(expanded);
+        try {
+          // Security: Resolve symlinks in allowed directories during startup
+          const resolved = await fs.realpath(absolute);
+          return normalizePath(resolved);
+        } catch (error) {
+          // If we can't resolve (doesn't exist), use the normalized absolute path
+          return normalizePath(absolute);
+        }
+      })
+    );
+
+    // Validate legacy directories
+    await Promise.all(
+      legacyDirectories.map(async (dir) => {
+        try {
+          const stats = await fs.stat(dir);
+          if (!stats.isDirectory()) {
+            console.error(`Error: Legacy directory ${dir} is not a directory`);
+            process.exit(1);
+          }
+        } catch (error) {
+          console.error(`Error accessing legacy directory ${dir}:`, error);
+          process.exit(1);
+        }
+      })
+    );
+
+    // Merge with approved folders (avoid duplicates)
+    for (const dir of legacyDirectories) {
+      if (!allowedDirectories.includes(dir)) {
+        allowedDirectories.push(dir);
+      }
+    }
   }
-  console.error("");
+
+  // Initialize the global configuration in lib.ts
+  setAllowedDirectories(allowedDirectories);
+  setIgnoredFolders(ignoredFolders);
+  // Set individual enabled tools (categories are combined dynamically in tool handlers)
+  setEnabledTools(enabledTools);
 }
 
-// Store allowed directories in normalized and resolved form
-allowedDirectories = await Promise.all(
-  directoryArgs.map(async (dir) => {
-    const expanded = expandHome(dir);
-    const absolute = path.resolve(expanded);
-    try {
-      // Security: Resolve symlinks in allowed directories during startup
-      // This ensures we know the real paths and can validate against them later
-      const resolved = await fs.realpath(absolute);
-      return normalizePath(resolved);
-    } catch (error) {
-      // If we can't resolve (doesn't exist), use the normalized absolute path
-      // This allows configuring allowed dirs that will be created later
-      return normalizePath(absolute);
-    }
-  })
-);
+// Generate dynamic server description
+function generateServerDescription(): string {
+  const baseDescription =
+    "A configurable Model Context Protocol server for secure filesystem operations that absolutely rocks. " +
+    "Enables AI assistants to dynamically access and manage file system resources with runtime directory registration and selective tool activation.";
 
-// Validate that all directories exist and are accessible
-await Promise.all(
-  allowedDirectories.map(async (dir) => {
-    try {
-      const stats = await fs.stat(dir);
-      if (!stats.isDirectory()) {
-        console.error(`Error: ${dir} is not a directory`);
-        process.exit(1);
-      }
-    } catch (error) {
-      console.error(`Error accessing directory ${dir}:`, error);
-      process.exit(1);
-    }
-  })
-);
+  const currentDirs = getAllowedDirectories();
 
-// Initialize the global configuration in lib.ts
-setAllowedDirectories(allowedDirectories);
-setIgnoredFolders(ignoredFolders);
-// Set individual enabled tools (categories are combined dynamically in tool handlers)
-setEnabledTools(enabledTools);
+  if (currentDirs.length === 0) {
+    return (
+      baseDescription +
+      "\n\nNO DIRECTORIES CURRENTLY ACCESSIBLE. Use register_directory tool to grant access, or restart server with --approved-folders argument."
+    );
+  }
+
+  const dirList = currentDirs.map((dir) => `  - ${dir}`).join("\n");
+
+  return `${baseDescription}\n\nIMMEDIATELY ACCESSIBLE DIRECTORIES (pre-approved, no registration needed):\n${dirList}\n\nIMPORTANT: These directories are already accessible to all filesystem tools. Do NOT use register_directory for these paths.\n\nTo add additional directories at runtime, use the register_directory tool or MCP Roots protocol.`;
+}
 
 // Server setup
 const server = new Server(
@@ -206,6 +309,7 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => {
       name: "filesystem-of-a-down",
       version: "1.0.0",
     },
+    instructions: generateServerDescription(),
   };
 });
 
@@ -423,10 +527,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function updateAllowedDirectoriesFromRoots(requestedRoots: Root[]) {
   const validatedRootDirs = await getValidRootDirectories(requestedRoots);
   if (validatedRootDirs.length > 0) {
+    // Note: MCP Roots replaces ALL allowed directories, including those specified via --approved-folders
+    // This is the expected behavior per MCP protocol - Roots provides runtime workspace context
     allowedDirectories = [...validatedRootDirs];
     setAllowedDirectories(allowedDirectories); // Update the global state in lib.ts
     console.error(
       `Updated allowed directories from MCP roots: ${validatedRootDirs.length} valid directories`
+    );
+    console.error(
+      "Note: MCP Roots replaces all previously configured directories (including --approved-folders)"
     );
   } else {
     console.error("No valid root directories provided by client");
@@ -467,6 +576,9 @@ server.oninitialized = async () => {
 
 // Start server
 export async function runServer() {
+  // Initialize directories before starting server
+  await initializeDirectories();
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // Minimal logging to avoid issues with MCP clients
