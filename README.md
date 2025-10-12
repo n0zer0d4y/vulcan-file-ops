@@ -273,7 +273,8 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **directory_tree**: Generate hierarchical directory structure as JSON
 - **move_file**: Relocate or rename files and directories
 - **file_operations**: Perform single or bulk file operations (move, copy, rename) on multiple files and directories concurrently
-- **search_files**: Locate files using pattern matching with exclusion support
+- **glob_files**: Locate files using glob pattern matching with exclusion support
+- **grep_files**: Search for text patterns within file contents with regex support and multiple output modes
 - **get_file_info**: Retrieve comprehensive file and directory metadata
 - **register_directory**: Enable runtime access to new directories
 - **list_allowed_directories**: Display currently accessible directory paths
@@ -283,7 +284,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **read**: File content access operations (read_file, read_media_file, read_multiple_files)
 - **write**: File modification operations (write_file, write_multiple_files, edit_file)
 - **filesystem**: Directory and file system management (create_directory, list_directory, list_directory_with_sizes, directory_tree, move_file, file_operations, get_file_info, register_directory, list_allowed_directories)
-- **search**: File discovery operations (search_files)
+- **search**: File and content discovery operations (glob_files, grep_files)
 - **all**: Complete tool set (default behavior)
 
 ### Supported File Types
@@ -323,6 +324,98 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - Operations: move, copy, rename
 - Handles both files and directories
 - Preserves file content without modification during operations
+
+### Search Tool Usage
+
+#### Glob Pattern Search (`glob_files`)
+
+Use `glob_files` to find files and directories by name patterns:
+
+```json
+{
+  "pattern": "**/*.ts",
+  "path": "/path/to/project"
+}
+```
+
+**Common patterns:**
+
+- `*.js` - All JavaScript files in current directory
+- `**/*.test.js` - All test files in all subdirectories
+- `src/**/*.{ts,tsx}` - All TypeScript files in src directory
+
+**With exclusions:**
+
+```json
+{
+  "pattern": "**/*.js",
+  "path": "/path/to/project",
+  "excludePatterns": ["node_modules/**", "dist/**"]
+}
+```
+
+#### Text Content Search (`grep_files`)
+
+Use `grep_files` to search for text patterns within files:
+
+**Basic search:**
+
+```json
+{
+  "pattern": "TODO"
+}
+```
+
+**Case-insensitive search:**
+
+```json
+{
+  "pattern": "error",
+  "-i": true
+}
+```
+
+**Search with context lines:**
+
+```json
+{
+  "pattern": "function.*test",
+  "-C": 3
+}
+```
+
+**Search only in specific file types:**
+
+```json
+{
+  "pattern": "import.*React",
+  "type": "ts"
+}
+```
+
+**Output modes:**
+
+```json
+{
+  "pattern": "FIXME",
+  "output_mode": "files_with_matches"
+}
+```
+
+**Available output modes:**
+
+- `content` (default) - Shows matching lines with line numbers
+- `files_with_matches` - Lists only file paths containing matches
+- `count` - Shows match counts per file
+
+**Limit results:**
+
+```json
+{
+  "pattern": ".*",
+  "head_limit": 50
+}
+```
 
 ### Development Setup
 

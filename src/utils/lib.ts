@@ -85,6 +85,61 @@ export interface SearchResult {
   isDirectory: boolean;
 }
 
+// Grep interfaces and types
+export interface GrepOptions {
+  caseInsensitive?: boolean;
+  contextBefore?: number;
+  contextAfter?: number;
+  outputMode?: "content" | "files_with_matches" | "count";
+  headLimit?: number;
+  multiline?: boolean;
+  fileType?: string;
+  globPattern?: string;
+}
+
+export interface GrepMatch {
+  file: string;
+  line: number;
+  content: string;
+  contextBefore?: string[];
+  contextAfter?: string[];
+}
+
+export interface GrepResult {
+  mode: "content" | "files_with_matches" | "count";
+  matches?: GrepMatch[];
+  files?: string[];
+  counts?: Map<string, number>;
+  totalMatches: number;
+  filesSearched: number;
+}
+
+// File type extensions mapping (ripgrep-compatible)
+const FILE_TYPE_EXTENSIONS: Record<string, string[]> = {
+  js: [".js", ".jsx", ".mjs", ".cjs"],
+  ts: [".ts", ".tsx", ".mts", ".cts"],
+  py: [".py", ".pyi", ".pyw"],
+  rust: [".rs"],
+  go: [".go"],
+  java: [".java"],
+  cpp: [".cpp", ".cc", ".cxx", ".hpp", ".h", ".hxx"],
+  c: [".c", ".h"],
+  rb: [".rb"],
+  php: [".php"],
+  css: [".css", ".scss", ".sass", ".less"],
+  html: [".html", ".htm"],
+  json: [".json"],
+  yaml: [".yaml", ".yml"],
+  xml: [".xml"],
+  md: [".md", ".markdown"],
+  sql: [".sql"],
+  sh: [".sh", ".bash"],
+};
+
+function getExtensionsForType(type: string): string[] {
+  return FILE_TYPE_EXTENSIONS[type.toLowerCase()] || [];
+}
+
 // Pure Utility Functions
 export function formatSize(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -483,4 +538,267 @@ export async function searchFilesWithValidation(
 
   await search(rootPath);
   return results;
+}
+
+export async function grepFilesWithValidation(
+  pattern: string,
+  searchPath: string,
+  allowedDirectories: string[],
+  options: GrepOptions = {}
+): Promise<GrepResult> {
+  const {
+    caseInsensitive = false,
+    contextBefore = 0,
+    contextAfter = 0,
+    outputMode = "content",
+    headLimit,
+    multiline = false,
+    fileType,
+    globPattern,
+  } = options;
+
+  // Create regex with appropriate flags (no 'g' flag to avoid stateful matching)
+  const flags = caseInsensitive ? "i" : "";
+  const dotAllFlag = multiline ? "s" : "";
+  let regex: RegExp;
+
+  try {
+    regex = new RegExp(pattern, flags + dotAllFlag);
+  } catch (error) {
+    throw new Error(
+      `Invalid regex pattern: ${pattern} - ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
+  const result: GrepResult = {
+    mode: outputMode,
+    matches: outputMode === "content" ? [] : undefined,
+    files: outputMode === "files_with_matches" ? [] : undefined,
+    counts: outputMode === "count" ? new Map() : undefined,
+    totalMatches: 0,
+    filesSearched: 0,
+  };
+
+  // Determine if we need to search recursively
+  const stats = await fs.stat(searchPath);
+  const isDirectory = stats.isDirectory();
+
+  async function searchFile(filePath: string): Promise<void> {
+    // Validate path against allowed directories
+    try {
+      await validatePath(filePath);
+    } catch {
+      return; // Skip files outside allowed directories
+    }
+
+    // Apply file type filter
+    if (fileType) {
+      const extensions = getExtensionsForType(fileType);
+      if (extensions.length > 0) {
+        const ext = path.extname(filePath).toLowerCase();
+        if (!extensions.includes(ext)) {
+          return; // Skip files that don't match type
+        }
+      }
+    }
+
+    // Apply glob filter
+    if (globPattern) {
+      const relativePath = path.relative(searchPath, filePath);
+      if (!minimatch(relativePath, globPattern, { dot: true })) {
+        return; // Skip files that don't match glob
+      }
+    }
+
+    // Check file size (limit to 100MB to prevent memory issues)
+    const MAX_FILE_SIZE = 100 * 1024 * 1024;
+    try {
+      const fileStats = await fs.stat(filePath);
+      if (fileStats.size > MAX_FILE_SIZE) {
+        console.warn(
+          `Skipping large file: ${filePath} (${formatSize(fileStats.size)})`
+        );
+        return;
+      }
+    } catch {
+      return; // Skip if can't stat
+    }
+
+    result.filesSearched++;
+
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      let fileMatchCount = 0;
+      let fileHasMatch = false;
+
+      if (multiline) {
+        // For multiline mode, search the entire content
+        const matches = content.match(new RegExp(pattern, flags + "g"));
+        if (matches) {
+          fileHasMatch = true;
+          fileMatchCount = matches.length;
+          result.totalMatches += matches.length;
+
+          if (outputMode === "content") {
+            // For multiline, we'll split by lines and find which lines have matches
+            const lines = normalizeLineEndings(content).split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (regex.test(line)) {
+                if (headLimit && result.matches!.length >= headLimit) {
+                  break;
+                }
+
+                const match: GrepMatch = {
+                  file: filePath,
+                  line: i + 1,
+                  content: line,
+                };
+
+                // Add context lines if requested
+                if (contextBefore > 0) {
+                  match.contextBefore = [];
+                  for (let j = Math.max(0, i - contextBefore); j < i; j++) {
+                    match.contextBefore.push(lines[j]);
+                  }
+                }
+
+                if (contextAfter > 0) {
+                  match.contextAfter = [];
+                  for (
+                    let j = i + 1;
+                    j < Math.min(lines.length, i + 1 + contextAfter);
+                    j++
+                  ) {
+                    match.contextAfter.push(lines[j]);
+                  }
+                }
+
+                result.matches!.push(match);
+              }
+            }
+          }
+        }
+      } else {
+        // For single-line mode, search line by line
+        const lines = normalizeLineEndings(content).split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+
+          if (regex.test(line)) {
+            fileHasMatch = true;
+            fileMatchCount++;
+            result.totalMatches++;
+
+            // Handle different output modes
+            if (outputMode === "content") {
+              // Check head limit for content mode
+              if (headLimit && result.matches!.length >= headLimit) {
+                break; // Stop processing this file
+              }
+
+              const match: GrepMatch = {
+                file: filePath,
+                line: i + 1,
+                content: line,
+              };
+
+              // Add context lines if requested
+              if (contextBefore > 0) {
+                match.contextBefore = [];
+                for (let j = Math.max(0, i - contextBefore); j < i; j++) {
+                  match.contextBefore.push(lines[j]);
+                }
+              }
+
+              if (contextAfter > 0) {
+                match.contextAfter = [];
+                for (
+                  let j = i + 1;
+                  j < Math.min(lines.length, i + 1 + contextAfter);
+                  j++
+                ) {
+                  match.contextAfter.push(lines[j]);
+                }
+              }
+
+              result.matches!.push(match);
+            }
+          }
+        }
+      }
+
+      // Handle files_with_matches mode
+      if (outputMode === "files_with_matches" && fileHasMatch) {
+        if (!headLimit || result.files!.length < headLimit) {
+          result.files!.push(filePath);
+        }
+      }
+
+      // Handle count mode
+      if (outputMode === "count" && fileMatchCount > 0) {
+        result.counts!.set(filePath, fileMatchCount);
+      }
+    } catch (error) {
+      // Skip binary files or files we can't read
+      return;
+    }
+  }
+
+  async function searchDirectory(
+    dirPath: string,
+    depth: number = 0
+  ): Promise<void> {
+    // Limit recursion depth
+    if (depth > 10) return;
+
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+
+        // Skip ignored folders
+        if (entry.isDirectory() && shouldIgnoreFolder(entry.name)) {
+          continue;
+        }
+
+        if (entry.isDirectory()) {
+          await searchDirectory(fullPath, depth + 1);
+        } else if (entry.isFile()) {
+          await searchFile(fullPath);
+
+          // Check global head limit
+          if (headLimit) {
+            if (
+              outputMode === "content" &&
+              result.matches!.length >= headLimit
+            ) {
+              return; // Stop searching
+            }
+            if (
+              outputMode === "files_with_matches" &&
+              result.files!.length >= headLimit
+            ) {
+              return;
+            }
+          }
+        }
+      }
+    } catch {
+      // Skip directories we can't read
+      return;
+    }
+  }
+
+  // Execute search
+  if (isDirectory) {
+    await searchDirectory(searchPath);
+  } else {
+    await searchFile(searchPath);
+  }
+
+  return result;
 }
