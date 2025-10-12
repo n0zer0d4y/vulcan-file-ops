@@ -26,12 +26,7 @@ export function getSearchTools() {
         "Perform recursive pattern-based searches for files and directories. " +
         "Accepts glob-style patterns matching paths relative to the search root. " +
         "Use simple patterns like '*.ext' for current directory matches, or '**/*.ext' for deep subdirectory searches. " +
-<<<<<<< HEAD
-        "Returns absolute paths to all discovered items. " +
-        "Excellent for locating files when exact paths are unknown. " +
-=======
         "Returns absolute paths to all discovered items. Excellent for locating files when exact paths are unknown. " +
->>>>>>> feat/grep-and-glob
         "Only searches within allowed directories.",
       inputSchema: zodToJsonSchema(SearchFilesArgsSchema) as ToolInput,
     },
