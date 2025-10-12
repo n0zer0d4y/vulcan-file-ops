@@ -354,7 +354,8 @@ const TOOL_REGISTRY = {
     getFileSystemTools().find((t) => t.name === "list_allowed_directories"),
 
   // Search tools
-  search_files: () => getSearchTools().find((t) => t.name === "search_files"),
+  glob_files: () => getSearchTools().find((t) => t.name === "glob_files"),
+  grep_files: () => getSearchTools().find((t) => t.name === "grep_files"),
 };
 
 // Tool categories for easier configuration
@@ -377,7 +378,7 @@ const TOOL_CATEGORIES = {
     "register_directory",
     "list_allowed_directories",
   ],
-  search: ["search_files"],
+  search: ["glob_files", "grep_files"],
   all: [
     "read_file",
     "read_text_file",
@@ -395,7 +396,8 @@ const TOOL_CATEGORIES = {
     "get_file_info",
     "register_directory",
     "list_allowed_directories",
-    "search_files",
+    "glob_files",
+    "grep_files",
   ],
 };
 
@@ -505,7 +507,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // Search tools
-      case "search_files": {
+      case "glob_files":
+      case "grep_files": {
         const { handleSearchTool } = await import("../tools/search-tools.js");
         return await handleSearchTool(name, args);
       }
