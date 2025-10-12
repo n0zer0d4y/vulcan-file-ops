@@ -261,8 +261,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 ### Available Tools
 
-- **read_file**: Retrieve complete file content as text or binary data
-- **read_text_file**: Access file content with optional line range selection
+- **read_file**: Read file contents with flexible modes (full, head, tail) for efficient file access
 - **read_media_file**: Process image and audio files with MIME type detection
 - **read_multiple_files**: Batch file reading with error isolation
 - **write_file**: Create or replace file content
@@ -281,7 +280,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 ### Tool Categories
 
-- **read**: File content access operations (read_file, read_text_file, read_media_file, read_multiple_files)
+- **read**: File content access operations (read_file, read_media_file, read_multiple_files)
 - **write**: File modification operations (write_file, write_multiple_files, edit_file)
 - **filesystem**: Directory and file system management (create_directory, list_directory, list_directory_with_sizes, directory_tree, move_file, file_operations, get_file_info, register_directory, list_allowed_directories)
 - **search**: File discovery operations (search_files)
@@ -291,9 +290,10 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 #### Text File Operations
 
-**Read Tools** (`read_file`, `read_text_file`, `read_multiple_files`):
+**Read Tools** (`read_file`, `read_multiple_files`):
 
 - Reads any file as UTF-8 encoded text
+- `read_file` supports three modes: full (entire file), head (first N lines), tail (last N lines)
 - Best for: Source code, configuration files, markdown, JSON, XML, CSV, logs, text documents
 - Will produce garbled output for binary files (images, executables, compressed files)
 
