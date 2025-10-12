@@ -112,9 +112,35 @@ export const MoveFileArgsSchema = z.object({
 });
 
 export const SearchFilesArgsSchema = z.object({
-  path: z.string(),
-  pattern: z.string(),
-  excludePatterns: z.array(z.string()).optional().default([]),
+  path: z.string().describe("Directory to search"),
+  pattern: z.string().describe("Glob pattern: *.js, **/*.test.ts"),
+  excludePatterns: z
+    .array(z.string())
+    .optional()
+    .default([])
+    .describe("Exclude patterns"),
+});
+
+export const GrepArgsSchema = z.object({
+  pattern: z.string().describe("Regex pattern to search for"),
+  path: z.string().optional().describe("Directory/file to search (optional)"),
+  type: z.string().optional().describe("File type filter: js, py, ts, etc"),
+  glob: z.string().optional().describe("Glob filter: *.js, **/*.test.ts"),
+  "-i": z.boolean().optional().default(false).describe("Case insensitive"),
+  "-A": z.number().optional().describe("Lines after match"),
+  "-B": z.number().optional().describe("Lines before match"),
+  "-C": z.number().optional().describe("Lines before+after match"),
+  output_mode: z
+    .enum(["content", "files_with_matches", "count"])
+    .optional()
+    .default("content")
+    .describe("content|files_with_matches|count"),
+  head_limit: z.number().optional().describe("Limit results to N"),
+  multiline: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Allow . to match newlines"),
 });
 
 export const GetFileInfoArgsSchema = z.object({
@@ -162,6 +188,7 @@ export type ListDirectoryWithSizesArgs = z.infer<
 export type DirectoryTreeArgs = z.infer<typeof DirectoryTreeArgsSchema>;
 export type MoveFileArgs = z.infer<typeof MoveFileArgsSchema>;
 export type SearchFilesArgs = z.infer<typeof SearchFilesArgsSchema>;
+export type GrepArgs = z.infer<typeof GrepArgsSchema>;
 export type GetFileInfoArgs = z.infer<typeof GetFileInfoArgsSchema>;
 export type RegisterDirectoryArgs = z.infer<typeof RegisterDirectoryArgsSchema>;
 export type FileOperationsArgs = z.infer<typeof FileOperationsArgsSchema>;
