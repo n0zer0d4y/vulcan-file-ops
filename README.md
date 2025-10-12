@@ -1,9 +1,12 @@
 ﻿# Filesystem of a Down MCP Server
 
-[![MCP Server](https://badge.mcpx.dev?type=server&features=tools)](https://modelcontextprotocol.io)
-[![MCP](https://badge.mcpx.dev)](https://modelcontextprotocol.io)
+[![MCP Server](https://badge.mcpx.dev?type=server "MCP Server")](https://modelcontextprotocol.io)
+[![MCP Server with Tools](https://badge.mcpx.dev?type=server&features=tools "MCP server with tools")](https://modelcontextprotocol.io)
+[![Development Status](https://img.shields.io/badge/status-production--stable-green.svg)](https://pypi.org/project/chronos-protocol/)
+[![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A configurable Model Context Protocol server for secure filesystem operations. Enables AI assistants to dynamically access and manage file system resources with runtime directory registration and selective tool activation.
+A configurable Model Context Protocol server for secure filesystem operations that absolutely **rocks**. Enables AI assistants to dynamically access and manage file system resources with runtime directory registration and selective tool activation.
 
 ## Table of Contents
 
@@ -179,16 +182,42 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **search**: File discovery operations (search_files)
 - **all**: Complete tool set (default behavior)
 
-## Contributing
+### Supported File Types
 
-This project welcomes contributions. To contribute:
+#### Text File Operations
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
+**Read Tools** (`read_file`, `read_text_file`, `read_multiple_files`):
+
+- Reads any file as UTF-8 encoded text
+- Best for: Source code, configuration files, markdown, JSON, XML, CSV, logs, text documents
+- Will produce garbled output for binary files (images, executables, compressed files)
+
+**Write Tools** (`write_file`, `write_multiple_files`, `edit_file`):
+
+- Writes UTF-8 encoded text content only
+- Can create: Source code, configuration files, markdown, JSON, XML, CSV, text documents
+- Cannot write binary files (no base64-to-binary conversion available)
+
+#### Binary File Operations
+
+**Read Media Tool** (`read_media_file`):
+
+- Returns base64-encoded data with MIME type detection
+- **Supported image formats**: PNG, JPG/JPEG, GIF, WebP, BMP, SVG
+- **Supported audio formats**: MP3, WAV, OGG, FLAC
+- Falls back to `application/octet-stream` for other binary files
+- This is the only tool that properly handles binary content
+
+**Note**: There is currently no write capability for binary files. You can read images and audio as base64 but cannot write them back through the filesystem tools.
+
+#### File System Operations
+
+**File Operations Tool** (`file_operations`, `move_file`):
+
+- Works with any file type (text or binary)
+- Operations: move, copy, rename
+- Handles both files and directories
+- Preserves file content without modification during operations
 
 ### Development Setup
 
