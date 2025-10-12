@@ -3,10 +3,10 @@ import path from "path";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
-  ReadTextFileArgsSchema,
+  ReadFileArgsSchema,
   ReadMediaFileArgsSchema,
   ReadMultipleFilesArgsSchema,
-  type ReadTextFileArgs,
+  type ReadFileArgs,
   type ReadMediaFileArgs,
   type ReadMultipleFilesArgs,
 } from "../types/index.js";
@@ -43,20 +43,23 @@ export function getReadTools() {
     {
       name: "read_file",
       description:
-        "Read the complete contents of a file as text. DEPRECATED: Use read_text_file instead.",
-      inputSchema: zodToJsonSchema(ReadTextFileArgsSchema) as ToolInput,
-    },
-    {
-      name: "read_text_file",
-      description:
-        "Read the complete contents of a file from the file system as text. " +
-        "Handles various text encodings and provides detailed error messages " +
-        "if the file cannot be read. Use this tool when you need to examine " +
-        "the contents of a single file. Use the 'head' parameter to read only " +
-        "the first N lines of a file, or the 'tail' parameter to read only " +
-        "the last N lines of a file. Operates on the file as text regardless of extension. " +
+        "Read file contents with flexible read modes. Supports three distinct reading modes:\n\n" +
+        "FULL MODE (default): Reads the complete file from start to finish. Use this when you need all file contents. " +
+        "Best for configuration files, source code, small to medium documents.\n\n" +
+        "HEAD MODE: Reads only the first N lines of the file. Ideal for previewing file structure, examining headers, " +
+        "or checking the beginning of large files without loading everything. Perfect for checking CSV headers, " +
+        "viewing file preamble, previewing log file start.\n\n" +
+        "TAIL MODE: Reads only the last N lines of the file. Perfect for checking recent entries in log files, " +
+        "viewing the end of output files, or examining latest data appends. Great for monitoring recent log entries, " +
+        "checking build completion status, viewing latest transactions.\n\n" +
+        "Performance: HEAD and TAIL modes are memory-efficient, loading only requested lines instead of the entire file. " +
+        "Recommended for files larger than 1MB or when you only need specific portions.\n\n" +
+        "Parameters:\n" +
+        "- path (required): File path to read\n" +
+        "- mode (optional, default: 'full'): Reading mode - 'full', 'head', or 'tail'\n" +
+        "- lines (conditional): Number of lines to read. Required when mode is 'head' or 'tail', must be positive integer.\n\n" +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(ReadTextFileArgsSchema) as ToolInput,
+      inputSchema: zodToJsonSchema(ReadFileArgsSchema) as ToolInput,
     },
     {
       name: "read_media_file",
@@ -80,41 +83,38 @@ export function getReadTools() {
 
 export async function handleReadTool(name: string, args: any) {
   switch (name) {
-    case "read_file":
-    case "read_text_file": {
-      const parsed = ReadTextFileArgsSchema.safeParse(args);
+    case "read_file": {
+      const parsed = ReadFileArgsSchema.safeParse(args);
       if (!parsed.success) {
-        throw new Error(
-          `Invalid arguments for read_text_file: ${parsed.error}`
-        );
+        throw new Error(`Invalid arguments for read_file: ${parsed.error}`);
       }
+
       const validPath = await validatePath(parsed.data.path);
+      const mode = parsed.data.mode || "full";
 
-      if (parsed.data.head && parsed.data.tail) {
-        throw new Error(
-          "Cannot specify both head and tail parameters simultaneously"
-        );
-      }
+      switch (mode) {
+        case "tail": {
+          const tailContent = await tailFile(validPath, parsed.data.lines!);
+          return {
+            content: [{ type: "text", text: tailContent }],
+          };
+        }
 
-      if (parsed.data.tail) {
-        // Use memory-efficient tail implementation for large files
-        const tailContent = await tailFile(validPath, parsed.data.tail);
-        return {
-          content: [{ type: "text", text: tailContent }],
-        };
-      }
+        case "head": {
+          const headContent = await headFile(validPath, parsed.data.lines!);
+          return {
+            content: [{ type: "text", text: headContent }],
+          };
+        }
 
-      if (parsed.data.head) {
-        // Use memory-efficient head implementation for large files
-        const headContent = await headFile(validPath, parsed.data.head);
-        return {
-          content: [{ type: "text", text: headContent }],
-        };
+        case "full":
+        default: {
+          const content = await readFileContent(validPath);
+          return {
+            content: [{ type: "text", text: content }],
+          };
+        }
       }
-      const content = await readFileContent(validPath);
-      return {
-        content: [{ type: "text", text: content }],
-      };
     }
 
     case "read_media_file": {

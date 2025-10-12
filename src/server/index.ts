@@ -474,7 +474,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       // Read tools
       case "read_file":
-      case "read_text_file":
       case "read_media_file":
       case "read_multiple_files": {
         const { handleReadTool } = await import("../tools/read-tools.js");

@@ -2,17 +2,42 @@ import { z } from "zod";
 import type { FileEdit } from "../utils/lib.js";
 
 // Schema definitions
-export const ReadTextFileArgsSchema = z.object({
-  path: z.string(),
-  tail: z
-    .number()
-    .optional()
-    .describe("If provided, returns only the last N lines of the file"),
-  head: z
-    .number()
-    .optional()
-    .describe("If provided, returns only the first N lines of the file"),
-});
+export const ReadFileArgsSchema = z
+  .object({
+    path: z.string().describe("Path to the file to read"),
+    mode: z
+      .enum(["full", "head", "tail"])
+      .optional()
+      .default("full")
+      .describe(
+        "Read mode: 'full' reads entire file, 'head' reads first N lines, 'tail' reads last N lines"
+      ),
+    lines: z
+      .number()
+      .positive()
+      .int()
+      .optional()
+      .describe(
+        "Number of lines to read (required when mode is 'head' or 'tail', must be positive integer)"
+      ),
+  })
+  .refine(
+    (data) => {
+      // If mode is head or tail, lines must be provided
+      if ((data.mode === "head" || data.mode === "tail") && !data.lines) {
+        return false;
+      }
+      // If mode is full, lines should not be provided
+      if (data.mode === "full" && data.lines !== undefined) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message:
+        "When mode is 'head' or 'tail', 'lines' parameter is required. When mode is 'full', 'lines' should not be provided.",
+    }
+  );
 
 export const ReadMediaFileArgsSchema = z.object({
   path: z.string(),
@@ -120,7 +145,7 @@ export const FileOperationsArgsSchema = z.object({
 });
 
 // Type exports
-export type ReadTextFileArgs = z.infer<typeof ReadTextFileArgsSchema>;
+export type ReadFileArgs = z.infer<typeof ReadFileArgsSchema>;
 export type ReadMediaFileArgs = z.infer<typeof ReadMediaFileArgsSchema>;
 export type ReadMultipleFilesArgs = z.infer<typeof ReadMultipleFilesArgsSchema>;
 export type WriteFileArgs = z.infer<typeof WriteFileArgsSchema>;
