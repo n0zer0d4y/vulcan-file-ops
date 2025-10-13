@@ -250,6 +250,51 @@ export const DeleteFilesArgsSchema = z.object({
     .describe("Force deletion even if files are read-only"),
 });
 
+export const ShellCommandArgsSchema = z.object({
+  command: z
+    .string()
+    .min(1, "Command cannot be empty")
+    .describe(
+      "Shell command to execute. " +
+        "For Windows: executed as 'powershell.exe -Command <command>'. " +
+        "For Unix/Mac: executed as 'bash -c <command>'. " +
+        "*** WARNING: Command substitution using $(), ``, <(), or >() may be restricted for security."
+    ),
+  description: z
+    .string()
+    .optional()
+    .describe(
+      "Brief description of what the command does and why it's needed. " +
+        "Be specific and concise. Ideally a single sentence. " +
+        "Can be up to 3 sentences for clarity. No line breaks."
+    ),
+  workdir: z
+    .string()
+    .optional()
+    .describe(
+      "Optional absolute path to the directory where the command should be executed. " +
+        "Must be within allowed directories. If not provided, uses current working directory."
+    ),
+  timeout: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .default(30000)
+    .describe(
+      "Timeout in milliseconds for command execution. Defaults to 30000 (30 seconds). " +
+        "Commands exceeding this duration will be terminated."
+    ),
+  requiresApproval: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Indicates if this command requires explicit user approval. " +
+        "Set to true for potentially dangerous operations (installing packages, deleting files, etc.)."
+    ),
+});
+
 // Type exports
 export type ReadFileArgs = z.infer<typeof ReadFileArgsSchema>;
 export type ReadMediaFileArgs = z.infer<typeof ReadMediaFileArgsSchema>;
@@ -273,3 +318,4 @@ export type GetFileInfoArgs = z.infer<typeof GetFileInfoArgsSchema>;
 export type RegisterDirectoryArgs = z.infer<typeof RegisterDirectoryArgsSchema>;
 export type FileOperationsArgs = z.infer<typeof FileOperationsArgsSchema>;
 export type DeleteFilesArgs = z.infer<typeof DeleteFilesArgsSchema>;
+export type ShellCommandArgs = z.infer<typeof ShellCommandArgsSchema>;
