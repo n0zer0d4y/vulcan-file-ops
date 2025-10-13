@@ -215,10 +215,12 @@ All configuration options can be combined:
         "C:/Users/username/projects,C:/Users/username/documents",
         "--ignored-folders",
         "node_modules,dist,.git",
+        "--approved-commands",
+        "npm,node,git,ls,pwd,cat,echo",
         "--enabled-tool-categories",
-        "read,filesystem",
+        "read,filesystem,shell",
         "--enabled-tools",
-        "list_directory,search_files,register_directory"
+        "list_directory,search_files,register_directory,execute_shell"
       ]
     }
   }
@@ -237,10 +239,12 @@ All configuration options can be combined:
         "/Users/username/projects,/Users/username/documents",
         "--ignored-folders",
         "node_modules,dist,.git",
+        "--approved-commands",
+        "npm,node,git,ls,pwd,cat,echo",
         "--enabled-tool-categories",
-        "read,filesystem",
+        "read,filesystem,shell",
         "--enabled-tools",
-        "list_directory,search_files,register_directory"
+        "list_directory,search_files,register_directory,execute_shell"
       ]
     }
   }
