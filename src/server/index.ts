@@ -14,6 +14,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs/promises";
 import path from "path";
+import dotenv from "dotenv";
 import { normalizePath, expandHome } from "../utils/path-utils.js";
 import { getValidRootDirectories } from "../utils/roots-utils.js";
 import {
@@ -28,10 +29,12 @@ import { getReadTools } from "../tools/read-tools.js";
 import { getWriteTools } from "../tools/write-tools.js";
 import { getFileSystemTools } from "../tools/filesystem-tools.js";
 import { getSearchTools } from "../tools/search-tools.js";
+import { initializeShellTool, getShellTools } from "../tools/shell-tool.js";
 
 // Configuration storage
 let allowedDirectories: string[] = [];
 let approvedFoldersFromArgs: string[] = [];
+let approvedCommandsFromArgs: string[] = [];
 let ignoredFolders: string[] = [];
 let enabledToolCategories: string[] = [];
 let enabledTools: string[] = [];
@@ -44,6 +47,7 @@ function parseArguments() {
   let parsingEnabledToolCategories = false;
   let parsingEnabledTools = false;
   let parsingApprovedFolders = false;
+  let parsingApprovedCommands = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -98,6 +102,7 @@ function parseArguments() {
       parsingIgnoredFolders = false;
       parsingApprovedFolders = false;
       parsingEnabledToolCategories = false;
+      parsingApprovedCommands = false;
       if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
         enabledTools = args[i + 1]
           .split(",")
@@ -108,12 +113,29 @@ function parseArguments() {
       continue;
     }
 
+    if (arg === "--approved-commands") {
+      parsingApprovedCommands = true;
+      parsingIgnoredFolders = false;
+      parsingApprovedFolders = false;
+      parsingEnabledToolCategories = false;
+      parsingEnabledTools = false;
+      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        approvedCommandsFromArgs = args[i + 1]
+          .split(",")
+          .map((c) => c.trim())
+          .filter((c) => c.length > 0);
+        i++; // Skip the next argument as it's been consumed
+      }
+      continue;
+    }
+
     // If we're not parsing a flag value, treat as directory
     if (
       !parsingIgnoredFolders &&
       !parsingApprovedFolders &&
       !parsingEnabledToolCategories &&
-      !parsingEnabledTools
+      !parsingEnabledTools &&
+      !parsingApprovedCommands
     ) {
       directories.push(arg);
     }
@@ -123,6 +145,7 @@ function parseArguments() {
     parsingApprovedFolders = false;
     parsingEnabledToolCategories = false;
     parsingEnabledTools = false;
+    parsingApprovedCommands = false;
   }
 
   return directories;
@@ -253,6 +276,49 @@ async function initializeDirectories() {
   setIgnoredFolders(ignoredFolders);
   // Set individual enabled tools (categories are combined dynamically in tool handlers)
   setEnabledTools(enabledTools);
+
+  // Load shell command configuration
+  let finalApprovedCommands: string[] = [];
+
+  // Priority 1: --approved-commands from CLI (supersedes .env)
+  if (approvedCommandsFromArgs.length > 0) {
+    finalApprovedCommands = approvedCommandsFromArgs;
+    console.error(
+      `  Approved commands (from CLI): ${finalApprovedCommands.join(", ")}`
+    );
+  } else {
+    // Priority 2: Load from .env file
+    try {
+      const envPath = path.join(process.cwd(), ".env");
+      dotenv.config({ path: envPath });
+
+      if (process.env.APPROVED_COMMANDS) {
+        finalApprovedCommands = process.env.APPROVED_COMMANDS.split(",")
+          .map((c) => c.trim())
+          .filter((c) => c.length > 0);
+        console.error(
+          `  Approved commands (from .env): ${finalApprovedCommands.join(", ")}`
+        );
+      }
+    } catch (error) {
+      console.error(
+        "  Note: Could not load .env file (this is okay if using CLI args)"
+      );
+    }
+  }
+
+  // Initialize shell tool with approved commands
+  if (finalApprovedCommands.length > 0) {
+    initializeShellTool(finalApprovedCommands);
+    console.error(
+      `Initialized shell tool with ${finalApprovedCommands.length} approved command(s)`
+    );
+  } else {
+    initializeShellTool([]);
+    console.error(
+      "Shell tool initialized with no pre-approved commands (all commands require approval)"
+    );
+  }
 }
 
 // Generate dynamic server description
@@ -358,6 +424,9 @@ const TOOL_REGISTRY = {
   // Search tools
   glob_files: () => getSearchTools().find((t) => t.name === "glob_files"),
   grep_files: () => getSearchTools().find((t) => t.name === "grep_files"),
+
+  // Shell tool
+  execute_shell: () => getShellTools().find((t) => t.name === "execute_shell"),
 };
 
 // Tool categories for easier configuration
@@ -382,6 +451,7 @@ const TOOL_CATEGORIES = {
     "list_allowed_directories",
   ],
   search: ["glob_files", "grep_files"],
+  shell: ["execute_shell"],
   all: [
     "read_file",
     "read_text_file",
@@ -402,6 +472,7 @@ const TOOL_CATEGORIES = {
     "list_allowed_directories",
     "glob_files",
     "grep_files",
+    "execute_shell",
   ],
 };
 
@@ -448,6 +519,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     ...getWriteTools(),
     ...getFileSystemTools(),
     ...getSearchTools(),
+    ...getShellTools(),
   ];
 
   // Filter tools if selective activation is configured
@@ -516,6 +588,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "grep_files": {
         const { handleSearchTool } = await import("../tools/search-tools.js");
         return await handleSearchTool(name, args);
+      }
+
+      // Shell tool
+      case "execute_shell": {
+        const { handleShellTool } = await import("../tools/shell-tool.js");
+        return await handleShellTool(name, args);
       }
 
       default:

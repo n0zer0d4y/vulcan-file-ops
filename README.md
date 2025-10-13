@@ -279,6 +279,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **get_file_info**: Retrieve comprehensive file and directory metadata
 - **register_directory**: Enable runtime access to new directories
 - **list_allowed_directories**: Display currently accessible directory paths
+- **execute_shell**: Execute shell commands with security controls and approval system
 
 ### Tool Categories
 
@@ -286,6 +287,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **write**: File modification operations (write_file, write_multiple_files, edit_file)
 - **filesystem**: Directory and file system management (create_directory, list_directory, list_directory_with_sizes, directory_tree, move_file, file_operations, delete_files, get_file_info, register_directory, list_allowed_directories)
 - **search**: File and content discovery operations (glob_files, grep_files)
+- **shell**: Shell command execution (execute_shell)
 - **all**: Complete tool set (default behavior)
 
 ### Supported File Types
@@ -481,6 +483,82 @@ Use `delete_files` to delete single or multiple files and directories:
 - Concurrent processing for performance
 - Maximum 100 paths per operation
 - Clear success/failure reporting for each path
+
+#### Shell Command Execution (`execute_shell`)
+
+Execute shell commands on the host system with comprehensive security controls.
+
+**Parameters:**
+
+```json
+{
+  "command": "npm install",
+  "description": "Install project dependencies",
+  "workdir": "/path/to/project",
+  "timeout": 30000,
+  "requiresApproval": false
+}
+```
+
+- **command** (required): Shell command to execute
+- **description** (optional): Brief description of command purpose
+- **workdir** (optional): Working directory (must be within allowed directories)
+- **timeout** (optional): Timeout in milliseconds (default: 30000)
+- **requiresApproval** (optional): Flag for dangerous operations (default: false)
+
+**Platform Behavior:**
+
+- **Windows**: Commands executed via `powershell.exe -NoProfile -NonInteractive -Command <command>`
+- **Unix/Mac**: Commands executed via `bash -c '<command>'`
+
+**Security:**
+
+- Command substitution patterns (`$()`, backticks, `<()`, `>()`) are blocked
+- Dangerous commands require approval (rm -rf, sudo, format, kill -9, etc.)
+- Working directory must be within allowed directories
+- Configurable command approval system via CLI or .env file
+
+**Configuration:**
+
+Commands can be pre-approved via:
+
+1. **CLI argument** (highest priority):
+
+   ```json
+   {
+     "args": ["--approved-commands", "npm,node,git,ls,pwd,echo"]
+   }
+   ```
+
+2. **.env file** (fallback):
+   ```env
+   APPROVED_COMMANDS=npm,node,git,ls,pwd,echo
+   ```
+
+**Recommended Approved Commands:**
+
+- **Safe (read-only)**: `ls,pwd,cat,echo,head,tail,grep,find,which,type,file,stat`
+- **Development**: `npm,node,git,python,pip,cargo,go,make,java,mvn`
+- **System** (use with caution): `sudo,apt,yum,brew,systemctl`
+
+**Example Result:**
+
+```
+Shell Command Execution Result:
+================================
+
+Command: npm install
+Description: Install project dependencies
+Working Directory: /path/to/project
+Exit Code: 0
+Signal: (none)
+
+--- Standard Output ---
+added 245 packages in 5.2s
+
+--- Standard Error ---
+(empty)
+```
 
 ### Development Setup
 
