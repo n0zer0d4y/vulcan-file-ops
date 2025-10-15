@@ -31,7 +31,11 @@
     "diff": "^8.0.2",
     "dotenv": "^17.2.3 ",
     "glob": "^11.0.3",
+    "mammoth": "^1.11.0",
+    "markitdown-ts": "^0.0.5",
     "minimatch": "^10.0.3",
+    "officeparser": "^5.2.1",
+    "pdf-parse": "^2.3.0",
     "zod-to-json-schema": "^3.24.6"
   },
   "devDependencies": {
@@ -39,6 +43,7 @@
     "@types/jest": "^30.0.0",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^22",
+    "@types/pdf-parse": "^1.1.5",
     "jest": "^30.2.0",
     "shx": "^0.3.4",
     "ts-jest": "^29.4.5",
