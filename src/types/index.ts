@@ -1,6 +1,28 @@
 import { z } from "zod";
 import type { FileEdit } from "../utils/lib.js";
 
+// Document parsing result types
+export interface DocumentParseResult {
+  text: string;
+  metadata?: {
+    pages?: number;
+    author?: string;
+    title?: string;
+    format: string;
+  };
+  parser: "pdf-parse" | "mammoth" | "officeparser";
+}
+
+// Internal file type detection
+export type SupportedDocumentExtension =
+  | ".pdf"
+  | ".docx"
+  | ".pptx"
+  | ".xlsx"
+  | ".odt"
+  | ".odp"
+  | ".ods";
+
 // Schema definitions
 export const ReadFileArgsSchema = z
   .object({

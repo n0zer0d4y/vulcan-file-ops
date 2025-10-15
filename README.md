@@ -2,6 +2,8 @@
 
 [![MCP Server](https://badge.mcpx.dev?type=server "MCP Server")](https://modelcontextprotocol.io)
 [![MCP Server with Tools](https://badge.mcpx.dev?type=server&features=tools "MCP server with tools")](https://modelcontextprotocol.io)
+![MCP Dev](https://badge.mcpx.dev?type=dev "MCP Dev")
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
 [![Development Status](https://img.shields.io/badge/status-production--stable-green.svg)](https://pypi.org/project/chronos-protocol/)
 [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -265,9 +267,9 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 ### Available Tools
 
-- **read_file**: Read file contents with flexible modes (full, head, tail) for efficient file access
+- **read_file**: Read file contents with flexible modes (full, head, tail) for efficient file access. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
 - **read_media_file**: Process image and audio files with MIME type detection
-- **read_multiple_files**: Batch file reading with error isolation
+- **read_multiple_files**: Batch file reading with error isolation. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
 - **write_file**: Create or replace file content
 - **write_multiple_files**: Create or replace multiple files concurrently
 - **edit_file**: Perform intelligent file modifications with three-tier matching (exact/flexible/fuzzy) and detailed diff output
@@ -300,10 +302,18 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 **Read Tools** (`read_file`, `read_multiple_files`):
 
-- Reads any file as UTF-8 encoded text
-- `read_file` supports three modes: full (entire file), head (first N lines), tail (last N lines)
-- Best for: Source code, configuration files, markdown, JSON, XML, CSV, logs, text documents
-- Will produce garbled output for binary files (images, executables, compressed files)
+- **Text files**: Reads any file as UTF-8 encoded text (source code, configuration files, markdown, JSON, XML, CSV, logs)
+- **Document files**: Automatically detects and parses:
+  - **PDF** (`.pdf`) - Plain text extraction via `pdf-parse`
+  - **Word** (`.docx`) - Markdown with formatting (headings, bold, lists, tables) via `mammoth`
+  - **PowerPoint** (`.pptx`) - Plain text extraction via `officeparser`
+  - **Excel** (`.xlsx`) - Plain text extraction via `officeparser`
+  - **OpenDocument Text** (`.odt`) - Plain text extraction via `officeparser`
+  - **OpenDocument Presentation** (`.odp`) - Plain text extraction via `officeparser`
+  - **OpenDocument Spreadsheet** (`.ods`) - Plain text extraction via `officeparser`
+- `read_file` supports three modes for text files: full (entire file), head (first N lines), tail (last N lines)
+- Document files ignore mode parameters and always return full content
+- Will produce garbled output for unsupported binary files (images, executables, compressed files)
 
 **Write Tools** (`write_file`, `write_multiple_files`, `edit_file`):
 

@@ -16,6 +16,7 @@ import {
   tailFile,
   headFile,
 } from "../utils/lib.js";
+import { isDocumentFile, parseDocument } from "../utils/document-parser.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
@@ -43,21 +44,10 @@ export function getReadTools() {
     {
       name: "read_file",
       description:
-        "Read file contents with flexible read modes. Supports three distinct reading modes:\n\n" +
-        "FULL MODE (default): Reads the complete file from start to finish. Use this when you need all file contents. " +
-        "Best for configuration files, source code, small to medium documents.\n\n" +
-        "HEAD MODE: Reads only the first N lines of the file. Ideal for previewing file structure, examining headers, " +
-        "or checking the beginning of large files without loading everything. Perfect for checking CSV headers, " +
-        "viewing file preamble, previewing log file start.\n\n" +
-        "TAIL MODE: Reads only the last N lines of the file. Perfect for checking recent entries in log files, " +
-        "viewing the end of output files, or examining latest data appends. Great for monitoring recent log entries, " +
-        "checking build completion status, viewing latest transactions.\n\n" +
-        "Performance: HEAD and TAIL modes are memory-efficient, loading only requested lines instead of the entire file. " +
-        "Recommended for files larger than 1MB or when you only need specific portions.\n\n" +
-        "Parameters:\n" +
-        "- path (required): File path to read\n" +
-        "- mode (optional, default: 'full'): Reading mode - 'full', 'head', or 'tail'\n" +
-        "- lines (conditional): Number of lines to read. Required when mode is 'head' or 'tail', must be positive integer.\n\n" +
+        "Read file contents with flexible modes. Supports text files and documents " +
+        "(PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS). " +
+        "Modes: full (default), head (first N lines), tail (last N lines). " +
+        "Parameters: path (required), mode (optional), lines (conditional). " +
         "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(ReadFileArgsSchema) as ToolInput,
     },
@@ -73,10 +63,9 @@ export function getReadTools() {
     {
       name: "read_multiple_files",
       description:
-        "Batch read multiple files concurrently for improved performance. " +
-        "Ideal when analyzing or comparing several files at once, as it's significantly faster than sequential reads. " +
-        "Returns each file's content labeled with its path for easy identification. " +
-        "Resilient design ensures individual file errors don't halt the entire batch operation. " +
+        "Batch read multiple files concurrently. Supports text files and documents " +
+        "(PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS). " +
+        "Parameter: paths (array of file paths). " +
         "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(ReadMultipleFilesArgsSchema) as ToolInput,
     },
@@ -92,6 +81,31 @@ export async function handleReadTool(name: string, args: any) {
       }
 
       const validPath = await validatePath(parsed.data.path);
+
+      // Check if document file (automatic detection)
+      if (isDocumentFile(validPath)) {
+        // Parse document (ignores mode/lines parameters for documents)
+        const result = await parseDocument(validPath);
+
+        let output = result.text;
+
+        // Add metadata header if available
+        if (result.metadata) {
+          const meta = result.metadata;
+          let header = `Document: ${path.basename(validPath)}\n`;
+          if (meta.format) header += `Format: ${meta.format}\n`;
+          if (meta.pages) header += `Pages: ${meta.pages}\n`;
+          if (meta.author) header += `Author: ${meta.author}\n`;
+          if (meta.title) header += `Title: ${meta.title}\n`;
+          output = header + "\n" + output;
+        }
+
+        return {
+          content: [{ type: "text", text: output }],
+        };
+      }
+
+      // Regular text file handling (existing logic)
       const mode = parsed.data.mode || "full";
 
       switch (mode) {
@@ -164,8 +178,23 @@ export async function handleReadTool(name: string, args: any) {
         parsed.data.paths.map(async (filePath: string) => {
           try {
             const validPath = await validatePath(filePath);
-            const content = await readFileContent(validPath);
-            return `${filePath}:\n${content}\n`;
+
+            // Auto-detect document vs text file
+            if (isDocumentFile(validPath)) {
+              const result = await parseDocument(validPath);
+
+              let output = `${filePath}:\n`;
+              if (result.metadata?.format) {
+                output += `Format: ${result.metadata.format}\n`;
+              }
+              output += result.text + "\n";
+
+              return output;
+            } else {
+              // Regular text file
+              const content = await readFileContent(validPath);
+              return `${filePath}:\n${content}\n`;
+            }
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : String(error);
