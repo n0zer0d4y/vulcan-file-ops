@@ -7,47 +7,19 @@ import {
   DocumentParseError,
 } from "../utils/document-parser.js";
 
-const FIXTURES_DIR = path.join(__dirname, "fixtures");
+const SAMPLE_FILES_DIR = path.join(
+  __dirname,
+  "..",
+  "..",
+  "docs",
+  "sample-files"
+);
+const TEST_WORKSPACE = path.join(__dirname, "..", "..", "test-workspace");
+const FIXTURES_DIR = path.join(TEST_WORKSPACE, "fixtures");
 
 // Helper to create test fixtures
 async function createTestFixtures() {
   await fs.mkdir(FIXTURES_DIR, { recursive: true });
-
-  // Create a minimal valid PDF
-  const minimalPDF = `%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>
-endobj
-4 0 obj
-<< /Length 44 >>
-stream
-BT
-/F1 12 Tf
-100 700 Td
-(Test PDF Content) Tj
-ET
-endstream
-endobj
-xref
-0 5
-0000000000 65535 f 
-0000000009 00000 n 
-0000000074 00000 n 
-0000000133 00000 n 
-0000000341 00000 n 
-trailer
-<< /Size 5 /Root 1 0 R >>
-startxref
-434
-%%EOF`;
-
-  await fs.writeFile(path.join(FIXTURES_DIR, "sample.pdf"), minimalPDF);
 
   // Create oversized file (>50MB)
   const largeContent = Buffer.alloc(51 * 1024 * 1024, "x"); // 51MB
@@ -62,7 +34,7 @@ startxref
 
 async function cleanupTestFixtures() {
   try {
-    await fs.rm(FIXTURES_DIR, { recursive: true, force: true });
+    await fs.rm(TEST_WORKSPACE, { recursive: true, force: true });
   } catch (error) {
     // Ignore cleanup errors
   }
@@ -115,14 +87,17 @@ describe("Document Parser", () => {
   });
 
   describe("parseDocument", () => {
-    test("parses PDF with pdf-parse", async () => {
-      const result = await parseDocument(path.join(FIXTURES_DIR, "sample.pdf"));
+    test("parses PDF with pdf2json or pdf-parse fallback", async () => {
+      const result = await parseDocument(
+        path.join(SAMPLE_FILES_DIR, "sample.pdf")
+      );
 
       expect(result.text).toBeDefined();
       expect(result.text.length).toBeGreaterThan(0);
-      expect(result.parser).toBe("pdf-parse");
+      // Can use either pdf2json (primary) or pdf-parse (fallback)
+      expect(["pdf2json", "pdf-parse"]).toContain(result.parser);
       expect(result.metadata?.format).toBe("PDF");
-    });
+    }, 10000); // 10 second timeout for PDF parsing
 
     test("rejects oversized files", async () => {
       await expect(

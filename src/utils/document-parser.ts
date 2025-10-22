@@ -72,10 +72,8 @@ export async function parseDocument(
         throw new Error(`Unsupported document format: ${ext}`);
     }
   } catch (error) {
-    // Fallback to officeparser for all supported formats
-    if (
-      [".pdf", ".docx", ".pptx", ".xlsx", ".odt", ".odp", ".ods"].includes(ext)
-    ) {
+    // Fallback to officeparser for Office formats only (NOT PDF)
+    if ([".docx", ".pptx", ".xlsx", ".odt", ".odp", ".ods"].includes(ext)) {
       try {
         return await parseOfficeDocument(filePath, ext);
       } catch (fallbackError) {
@@ -91,7 +89,7 @@ export async function parseDocument(
 }
 
 /**
- * Parse PDF using pdf-parse (primary)
+ * Parse PDF using pdf-parse
  */
 async function parsePDF(filePath: string): Promise<DocumentParseResult> {
   // Lazy load pdf-parse

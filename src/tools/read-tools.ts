@@ -44,10 +44,10 @@ export function getReadTools() {
     {
       name: "read_file",
       description:
-        "Read file contents with flexible modes. Supports text files and documents " +
+        "Read files with flexible modes. Supports text and documents " +
         "(PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS). " +
-        "Modes: full (default), head (first N lines), tail (last N lines). " +
-        "Parameters: path (required), mode (optional), lines (conditional). " +
+        "PDF: Extracts with format metadata (fonts, colors, layout). " +
+        "Modes: full, head (first N lines), tail (last N lines). " +
         "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(ReadFileArgsSchema) as ToolInput,
     },
@@ -63,8 +63,9 @@ export function getReadTools() {
     {
       name: "read_multiple_files",
       description:
-        "Batch read multiple files concurrently. Supports text files and documents " +
+        "Batch read multiple files concurrently. Supports text and documents " +
         "(PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS). " +
+        "PDF: Extracts with format metadata. " +
         "Parameter: paths (array of file paths). " +
         "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(ReadMultipleFilesArgsSchema) as ToolInput,
@@ -97,6 +98,7 @@ export async function handleReadTool(name: string, args: any) {
           if (meta.pages) header += `Pages: ${meta.pages}\n`;
           if (meta.author) header += `Author: ${meta.author}\n`;
           if (meta.title) header += `Title: ${meta.title}\n`;
+
           output = header + "\n" + output;
         }
 
@@ -187,6 +189,33 @@ export async function handleReadTool(name: string, args: any) {
               if (result.metadata?.format) {
                 output += `Format: ${result.metadata.format}\n`;
               }
+
+              // Add formatting information if available
+              if (result.formatting) {
+                if (
+                  result.formatting.fonts &&
+                  result.formatting.fonts.length > 0
+                ) {
+                  output += `Fonts: ${result.formatting.fonts
+                    .map((f) => f.name)
+                    .join(", ")}\n`;
+                }
+                if (
+                  result.formatting.colors &&
+                  result.formatting.colors.length > 0
+                ) {
+                  output += `Colors: ${result.formatting.colors.join(", ")}\n`;
+                }
+                if (result.formatting.layout?.pages) {
+                  output += `Layout: ${
+                    result.formatting.layout.pages.length
+                  } page(s) with ${result.formatting.layout.pages.reduce(
+                    (sum, p) => sum + p.texts.length,
+                    0
+                  )} positioned elements\n`;
+                }
+              }
+
               output += result.text + "\n";
 
               return output;

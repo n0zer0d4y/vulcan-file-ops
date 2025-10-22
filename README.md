@@ -270,8 +270,8 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **read_file**: Read file contents with flexible modes (full, head, tail) for efficient file access. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
 - **read_media_file**: Process image and audio files with MIME type detection
 - **read_multiple_files**: Batch file reading with error isolation. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
-- **write_file**: Create or replace file content
-- **write_multiple_files**: Create or replace multiple files concurrently
+- **write_file**: Create or replace file content. Supports HTML-to-PDF/DOCX conversion with rich formatting
+- **write_multiple_files**: Create or replace multiple files concurrently. Supports HTML-to-PDF/DOCX conversion
 - **edit_file**: Perform intelligent file modifications with three-tier matching (exact/flexible/fuzzy) and detailed diff output
 - **create_directory**: Generate directory structures with parent creation
 - **list_directory**: Display directory contents with type indicators
@@ -317,8 +317,10 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 **Write Tools** (`write_file`, `write_multiple_files`, `edit_file`):
 
-- Writes UTF-8 encoded text content only
-- Can create: Source code, configuration files, markdown, JSON, XML, CSV, text documents
+- Writes UTF-8 encoded text content
+- Supports HTML-to-PDF/DOCX conversion with rich formatting (headings, bold, italic, tables, lists, colors)
+- Can create: Source code, configuration files, markdown, JSON, XML, CSV, text documents, formatted PDF/DOCX from HTML
+- Plain text fallback for PDF/DOCX when HTML is not detected
 - Cannot write binary files (no base64-to-binary conversion available)
 
 #### Binary File Operations
