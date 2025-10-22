@@ -57,13 +57,23 @@ function parseArguments() {
       parsingIgnoredFolders = false;
       parsingEnabledToolCategories = false;
       parsingEnabledTools = false;
-      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
-        approvedFoldersFromArgs = args[i + 1]
-          .split(",")
-          .map((f) => f.trim())
-          .filter((f) => f.length > 0);
-        i++; // Skip the next argument as it's been consumed
+      parsingApprovedCommands = false;
+
+      // Look ahead to collect all non-flag arguments
+      const folders: string[] = [];
+      while (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        folders.push(args[i + 1]);
+        i++;
       }
+
+      // Also support comma-separated format for backward compatibility
+      approvedFoldersFromArgs = folders.flatMap((f) =>
+        f
+          .split(",")
+          .map((dir) => dir.trim())
+          .filter((dir) => dir.length > 0)
+      );
+
       continue;
     }
 
@@ -72,13 +82,23 @@ function parseArguments() {
       parsingApprovedFolders = false;
       parsingEnabledToolCategories = false;
       parsingEnabledTools = false;
-      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
-        ignoredFolders = args[i + 1]
-          .split(",")
-          .map((f) => f.trim())
-          .filter((f) => f.length > 0);
-        i++; // Skip the next argument as it's been consumed
+      parsingApprovedCommands = false;
+
+      // Look ahead to collect all non-flag arguments
+      const folders: string[] = [];
+      while (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        folders.push(args[i + 1]);
+        i++;
       }
+
+      // Also support comma-separated format for backward compatibility
+      ignoredFolders = folders.flatMap((f) =>
+        f
+          .split(",")
+          .map((dir) => dir.trim())
+          .filter((dir) => dir.length > 0)
+      );
+
       continue;
     }
 
@@ -87,13 +107,23 @@ function parseArguments() {
       parsingIgnoredFolders = false;
       parsingApprovedFolders = false;
       parsingEnabledTools = false;
-      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
-        enabledToolCategories = args[i + 1]
-          .split(",")
-          .map((t) => t.trim())
-          .filter((t) => t.length > 0);
-        i++; // Skip the next argument as it's been consumed
+      parsingApprovedCommands = false;
+
+      // Look ahead to collect all non-flag arguments
+      const categories: string[] = [];
+      while (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        categories.push(args[i + 1]);
+        i++;
       }
+
+      // Also support comma-separated format for backward compatibility
+      enabledToolCategories = categories.flatMap((c) =>
+        c
+          .split(",")
+          .map((cat) => cat.trim())
+          .filter((cat) => cat.length > 0)
+      );
+
       continue;
     }
 
@@ -103,13 +133,22 @@ function parseArguments() {
       parsingApprovedFolders = false;
       parsingEnabledToolCategories = false;
       parsingApprovedCommands = false;
-      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
-        enabledTools = args[i + 1]
-          .split(",")
-          .map((t) => t.trim())
-          .filter((t) => t.length > 0);
-        i++; // Skip the next argument as it's been consumed
+
+      // Look ahead to collect all non-flag arguments
+      const tools: string[] = [];
+      while (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        tools.push(args[i + 1]);
+        i++;
       }
+
+      // Also support comma-separated format for backward compatibility
+      enabledTools = tools.flatMap((t) =>
+        t
+          .split(",")
+          .map((tool) => tool.trim())
+          .filter((tool) => tool.length > 0)
+      );
+
       continue;
     }
 
@@ -119,13 +158,22 @@ function parseArguments() {
       parsingApprovedFolders = false;
       parsingEnabledToolCategories = false;
       parsingEnabledTools = false;
-      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
-        approvedCommandsFromArgs = args[i + 1]
-          .split(",")
-          .map((c) => c.trim())
-          .filter((c) => c.length > 0);
-        i++; // Skip the next argument as it's been consumed
+
+      // Look ahead to collect all non-flag arguments
+      const commands: string[] = [];
+      while (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        commands.push(args[i + 1]);
+        i++;
       }
+
+      // Also support comma-separated format for backward compatibility
+      approvedCommandsFromArgs = commands.flatMap((c) =>
+        c
+          .split(",")
+          .map((cmd) => cmd.trim())
+          .filter((cmd) => cmd.length > 0)
+      );
+
       continue;
     }
 
