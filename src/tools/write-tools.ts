@@ -1,5 +1,7 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
+import path from "path";
+import { promises as fs } from "fs";
 import {
   WriteFileArgsSchema,
   WriteMultipleFilesArgsSchema,
@@ -13,19 +15,81 @@ import {
   writeFileContent,
   applyFileEdits,
 } from "../utils/lib.js";
+import {
+  isHTMLContent,
+  convertHTMLToPDF,
+  convertHTMLToDOCX,
+} from "../utils/html-to-document.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
+
+/**
+ * Helper function to write file content based on file extension
+ * Supports HTML conversion for rich formatting in PDF and DOCX files
+ */
+async function writeFileBasedOnExtension(
+  validPath: string,
+  content: string
+): Promise<void> {
+  const ext = path.extname(validPath).toLowerCase();
+  const filename = path.basename(validPath);
+  const fileTitle = path.basename(validPath, ext);
+
+  // Detect if content is HTML
+  const isHTML = isHTMLContent(content);
+
+  if (ext === ".pdf") {
+    if (isHTML) {
+      // Use HTML-to-PDF converter for rich formatting
+      const pdfBuffer = await convertHTMLToPDF(content, {
+        title: fileTitle,
+        author: "filesystem-of-a-down",
+      });
+      await fs.writeFile(validPath, pdfBuffer);
+    } else {
+      // Fallback to simple text PDF for plain text
+      const { createSimpleTextPDF } = await import("../utils/pdf-writer.js");
+      const pdfBuffer = await createSimpleTextPDF(content);
+      await fs.writeFile(validPath, pdfBuffer);
+    }
+  } else if (ext === ".docx") {
+    if (isHTML) {
+      // Use HTML-to-DOCX converter for rich formatting
+      const docxBuffer = await convertHTMLToDOCX(content, {
+        title: fileTitle,
+        author: "filesystem-of-a-down",
+      });
+      await fs.writeFile(validPath, docxBuffer);
+    } else {
+      // Fallback to simple text DOCX for plain text
+      const { createSimpleDOCX } = await import("../utils/docx-writer.js");
+      const docxBuffer = await createSimpleDOCX(content);
+      await fs.writeFile(validPath, docxBuffer);
+    }
+  } else {
+    // Regular text file
+    await writeFileContent(validPath, content);
+  }
+}
 
 export function getWriteTools() {
   return [
     {
       name: "write_file",
       description:
-        "Create new files or replace existing file contents entirely. " +
-        "Warning: This operation overwrites files without confirmation, so use carefully. " +
-        "Processes text content with appropriate UTF-8 encoding for reliable storage. " +
+        "Create/replace files. Supports text (UTF-8), PDF, and DOCX with HTML formatting. " +
         "\n\n" +
+        "**PDF/DOCX with HTML Formatting:**\n" +
+        "- Provide HTML content for rich formatting (headings, bold, italic, colors, tables, lists)\n" +
+        "- Supports: <h1>-<h6>, <p>, <div>, <span>, <strong>, <em>, <u>, <table>, <ul>, <ol>\n" +
+        "- CSS styling: colors, fonts, alignment, borders, margins, padding\n" +
+        "- Example: '<html><body><h1 style=\"color: #2c3e50;\">Title</h1><p>Content</p></body></html>'\n" +
+        "- Plain text fallback: If content is not HTML, creates simple formatted document\n" +
+        "\n" +
+        "**Text files:** UTF-8 encoding. " +
+        "**Overwrites without confirmation.**\n" +
+        "\n" +
         "IMPORTANT - Multi-line Content:\n" +
         "- Use actual newline characters in the content string, NOT escape sequences like \\n\n" +
         "- MCP/JSON will handle the encoding automatically\n" +
@@ -69,11 +133,13 @@ export function getWriteTools() {
     {
       name: "write_multiple_files",
       description:
-        "Write multiple files simultaneously with concurrent processing. " +
-        "Each file operation is atomic and secure. Failed writes for individual " +
-        "files won't stop other files from being written. Returns detailed " +
-        "results for each file operation. " +
+        "Write multiple files concurrently. Supports text, PDF, and DOCX with HTML formatting. " +
+        "File type auto-detected by extension. Failed writes for individual files " +
+        "won't stop others. Returns detailed results for each file. " +
         "\n\n" +
+        "**PDF/DOCX with HTML:** Provide HTML content for rich formatting. " +
+        "Automatically detects HTML and applies formatting. Plain text creates simple documents.\n" +
+        "\n" +
         "IMPORTANT - Multi-line Content:\n" +
         "- Use actual newline characters in content strings, NOT \\n escape sequences\n" +
         "- Each file's content will be written exactly as provided in the string\n" +
@@ -92,7 +158,7 @@ export async function handleWriteTool(name: string, args: any) {
         throw new Error(`Invalid arguments for write_file: ${parsed.error}`);
       }
       const validPath = await validatePath(parsed.data.path);
-      await writeFileContent(validPath, parsed.data.content);
+      await writeFileBasedOnExtension(validPath, parsed.data.content);
       return {
         content: [
           { type: "text", text: `Successfully wrote to ${parsed.data.path}` },
@@ -168,7 +234,7 @@ export async function handleWriteTool(name: string, args: any) {
       // Write all valid files concurrently
       const writePromises = validFiles.map(async (file) => {
         try {
-          await writeFileContent(file.validPath, file.content);
+          await writeFileBasedOnExtension(file.validPath, file.content);
           return {
             path: file.path,
             success: true,

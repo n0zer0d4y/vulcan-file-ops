@@ -10,7 +10,30 @@ export interface DocumentParseResult {
     title?: string;
     format: string;
   };
-  parser: "pdf-parse" | "mammoth" | "officeparser";
+  parser: "pdf-parse" | "pdf2json" | "mammoth" | "officeparser";
+  // Format preservation data (primarily for PDF via pdf2json)
+  formatting?: {
+    fonts?: Array<{
+      id?: number;
+      name: string;
+      family?: string;
+      size?: number;
+    }>;
+    colors?: Array<string>; // Hex color codes
+    layout?: {
+      pages: Array<{
+        width: number;
+        height: number;
+        texts: Array<{
+          x: number;
+          y: number;
+          text: string;
+          font?: number; // Font ID reference
+          color?: string; // Hex color code
+        }>;
+      }>;
+    };
+  };
 }
 
 // Internal file type detection

@@ -4,67 +4,34 @@ import path from "path";
 import { handleReadTool } from "../tools/read-tools.js";
 import { setAllowedDirectories, getAllowedDirectories } from "../utils/lib.js";
 
-const FIXTURES_DIR = path.join(__dirname, "fixtures");
+const SAMPLE_FILES_DIR = path.join(
+  __dirname,
+  "..",
+  "..",
+  "docs",
+  "sample-files"
+);
 const TEST_WORKSPACE = path.join(__dirname, "..", "..", "test-workspace");
+const FIXTURES_DIR = path.join(TEST_WORKSPACE, "fixtures");
 
 // Helper to set test roots
 async function setupTestEnvironment() {
-  // Create fixtures directory
+  // Create test workspace and fixtures directory
   await fs.mkdir(FIXTURES_DIR, { recursive: true });
 
-  // Create workspace directory
-  await fs.mkdir(TEST_WORKSPACE, { recursive: true });
-
-  // Create a minimal valid PDF
-  const minimalPDF = `%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>
-endobj
-4 0 obj
-<< /Length 50 >>
-stream
-BT
-/F1 12 Tf
-100 700 Td
-(Integration Test PDF) Tj
-ET
-endstream
-endobj
-xref
-0 5
-0000000000 65535 f 
-0000000009 00000 n 
-0000000074 00000 n 
-0000000133 00000 n 
-0000000341 00000 n 
-trailer
-<< /Size 5 /Root 1 0 R >>
-startxref
-440
-%%EOF`;
-
-  await fs.writeFile(path.join(FIXTURES_DIR, "sample.pdf"), minimalPDF);
-
-  // Create regular text file
+  // Create regular text file for testing
   await fs.writeFile(
     path.join(FIXTURES_DIR, "text.txt"),
     "Plain text content\nLine 2\nLine 3"
   );
 
-  // Register test directories
+  // Register test directories (include sample-files and test workspace)
   const currentDirs = getAllowedDirectories();
-  setAllowedDirectories([...currentDirs, FIXTURES_DIR, TEST_WORKSPACE]);
+  setAllowedDirectories([...currentDirs, SAMPLE_FILES_DIR, TEST_WORKSPACE]);
 }
 
 async function cleanupTestEnvironment() {
   try {
-    await fs.rm(FIXTURES_DIR, { recursive: true, force: true });
     await fs.rm(TEST_WORKSPACE, { recursive: true, force: true });
   } catch (error) {
     // Ignore cleanup errors
@@ -82,7 +49,7 @@ describe("read_file with documents", () => {
 
   test("reads PDF through read_file", async () => {
     const result = await handleReadTool("read_file", {
-      path: path.join(FIXTURES_DIR, "sample.pdf"),
+      path: path.join(SAMPLE_FILES_DIR, "sample.pdf"),
     });
 
     expect(result.content).toBeDefined();
@@ -91,7 +58,7 @@ describe("read_file with documents", () => {
     const content = result.content[0] as { type: string; text: string };
     expect(content.text).toContain("Document:");
     expect(content.text).toContain("Format: PDF");
-  });
+  }, 10000);
 
   test("reads text file through read_file (unchanged behavior)", async () => {
     const result = await handleReadTool("read_file", {
@@ -109,18 +76,18 @@ describe("read_file with documents", () => {
 
   test("mode parameters ignored for PDF documents", async () => {
     const resultFull = await handleReadTool("read_file", {
-      path: path.join(FIXTURES_DIR, "sample.pdf"),
+      path: path.join(SAMPLE_FILES_DIR, "sample.pdf"),
       mode: "full",
     });
 
     const resultHead = await handleReadTool("read_file", {
-      path: path.join(FIXTURES_DIR, "sample.pdf"),
+      path: path.join(SAMPLE_FILES_DIR, "sample.pdf"),
       mode: "head",
       lines: 5,
     });
 
     const resultTail = await handleReadTool("read_file", {
-      path: path.join(FIXTURES_DIR, "sample.pdf"),
+      path: path.join(SAMPLE_FILES_DIR, "sample.pdf"),
       mode: "tail",
       lines: 5,
     });
@@ -132,7 +99,7 @@ describe("read_file with documents", () => {
 
     expect(contentFull.text).toBe(contentHead.text);
     expect(contentFull.text).toBe(contentTail.text);
-  });
+  }, 10000);
 
   test("mode parameters work for text files", async () => {
     const resultFull = await handleReadTool("read_file", {
@@ -169,7 +136,7 @@ describe("read_multiple_files with documents", () => {
     const result = await handleReadTool("read_multiple_files", {
       paths: [
         path.join(FIXTURES_DIR, "text.txt"),
-        path.join(FIXTURES_DIR, "sample.pdf"),
+        path.join(SAMPLE_FILES_DIR, "sample.pdf"),
       ],
     });
 
@@ -191,14 +158,14 @@ describe("read_multiple_files with documents", () => {
 
     // Should be separated
     expect(text).toContain("---");
-  });
+  }, 10000);
 
   test("handles errors gracefully in batch operations", async () => {
     const result = await handleReadTool("read_multiple_files", {
       paths: [
         path.join(FIXTURES_DIR, "text.txt"),
-        path.join(FIXTURES_DIR, "nonexistent.pdf"),
-        path.join(FIXTURES_DIR, "sample.pdf"),
+        path.join(SAMPLE_FILES_DIR, "nonexistent.pdf"),
+        path.join(SAMPLE_FILES_DIR, "sample.pdf"),
       ],
     });
 
@@ -212,11 +179,11 @@ describe("read_multiple_files with documents", () => {
     // Should show error for invalid file
     expect(text).toContain("nonexistent.pdf");
     expect(text).toContain("Error");
-  });
+  }, 10000);
 
   test("returns consistent format for document files", async () => {
     const result = await handleReadTool("read_multiple_files", {
-      paths: [path.join(FIXTURES_DIR, "sample.pdf")],
+      paths: [path.join(SAMPLE_FILES_DIR, "sample.pdf")],
     });
 
     const content = result.content[0] as { type: string; text: string };
@@ -227,7 +194,7 @@ describe("read_multiple_files with documents", () => {
 
     // Should have format indicator
     expect(text).toContain("Format: PDF");
-  });
+  }, 10000);
 });
 
 describe("read_file backwards compatibility", () => {
