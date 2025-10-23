@@ -326,10 +326,33 @@ export const CreateDirectoryArgsSchema = z.object({
   path: z.string(),
 });
 
+// Unified directory listing schema - replaces old list_directory, list_directory_with_sizes, and directory_tree
 export const ListDirectoryArgsSchema = z.object({
-  path: z.string(),
+  path: z.string().describe("Absolute path to the directory to list"),
+  format: z
+    .enum(["simple", "detailed", "tree", "json"])
+    .optional()
+    .default("simple")
+    .describe(
+      "Output format: 'simple' (basic listing), 'detailed' (with sizes and metadata), " +
+        "'tree' (hierarchical text tree), 'json' (structured data)"
+    ),
+  sortBy: z
+    .enum(["name", "size"])
+    .optional()
+    .default("name")
+    .describe("Sort by name (alphabetical) or size (largest first)"),
+  excludePatterns: z
+    .array(z.string())
+    .optional()
+    .default([])
+    .describe(
+      "Glob patterns to exclude (e.g., ['*.log', 'temp*']). " +
+        "Applied in addition to globally configured ignored folders."
+    ),
 });
 
+// Keep old schemas temporarily for reference during migration
 export const ListDirectoryWithSizesArgsSchema = z.object({
   path: z.string(),
   sortBy: z

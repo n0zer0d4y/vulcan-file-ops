@@ -273,9 +273,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - **write_multiple_files**: Create or replace multiple files concurrently. Supports HTML-to-PDF/DOCX conversion
 - **edit_file**: Perform intelligent file modifications with three-tier matching (exact/flexible/fuzzy) and detailed diff output
 - **create_directory**: Generate directory structures with parent creation
-- **list_directory**: Display directory contents with type indicators
-- **list_directory_with_sizes**: Show directory contents with size information and sorting
-- **directory_tree**: Generate hierarchical directory structure as JSON
+- **list_directory**: Comprehensive directory listing with multiple output formats (simple, detailed with sizes, hierarchical tree, structured JSON). Supports sorting by name or size, pattern-based filtering, and automatic filtering of configured ignored folders. Replaces previous list_directory_with_sizes and directory_tree tools
 - **move_file**: Relocate or rename files and directories
 - **file_operations**: Perform single or bulk file operations (move, copy, rename) on multiple files and directories concurrently
 - **delete_files**: Delete single or multiple files and directories with optional recursive deletion
@@ -290,7 +288,7 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 - **read**: File content access operations (read_file, read_media_file, read_multiple_files)
 - **write**: File modification operations (write_file, write_multiple_files, edit_file)
-- **filesystem**: Directory and file system management (create_directory, list_directory, list_directory_with_sizes, directory_tree, move_file, file_operations, delete_files, get_file_info, register_directory, list_allowed_directories)
+- **filesystem**: Directory and file system management (create_directory, list_directory, move_file, file_operations, delete_files, get_file_info, register_directory, list_allowed_directories)
 - **search**: File and content discovery operations (glob_files, grep_files)
 - **shell**: Shell command execution (execute_shell)
 - **all**: Complete tool set (default behavior)
@@ -607,6 +605,17 @@ The project includes comprehensive test coverage. Run tests with:
 ```bash
 npm test
 ```
+
+## Contributing
+
+Pull requests are not being accepted for this project.
+
+Bug reports and feature requests are welcome through GitHub issues. Please include:
+
+- For bugs: reproduction steps, expected vs actual behavior, environment details
+- For features: clear description of what you need and your use case
+
+Existing issues may already cover your topic, so please search first.
 
 ## License
 

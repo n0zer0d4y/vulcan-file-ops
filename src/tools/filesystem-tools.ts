@@ -37,6 +37,22 @@ import {
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
 
+// Internal interfaces for unified list_directory implementation
+interface FileEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size: number;
+  modifiedTime: Date;
+  children?: FileEntry[];
+}
+
+interface ListingResult {
+  entries: FileEntry[];
+  excludedByPatterns: number;
+  excludedByIgnoreRules: number;
+}
+
 export function getFileSystemTools() {
   // Get current allowed directories for dynamic descriptions
   const currentAllowedDirs = getAllowedDirectories();
@@ -65,33 +81,12 @@ export function getFileSystemTools() {
     {
       name: "list_directory",
       description:
-        "Display comprehensive listings of directory contents including all files and subdirectories. " +
-        "Output uses clear [FILE] and [DIR] prefixes to differentiate between entry types at a glance. " +
-        "Essential for exploring directory organization and locating specific items within folders. " +
-        "Only works within allowed directories.",
+        "List directory contents with flexible output formats. Replaces the previous " +
+        "list_directory, list_directory_with_sizes, and directory_tree tools. " +
+        "Supports simple listings, detailed views with sizes/timestamps, hierarchical " +
+        "tree display, and structured JSON output. Automatically filters globally " +
+        "configured ignored folders. Only works within allowed directories.",
       inputSchema: zodToJsonSchema(ListDirectoryArgsSchema) as ToolInput,
-    },
-    {
-      name: "list_directory_with_sizes",
-      description:
-        "Display enhanced directory listings with file size information. " +
-        "Shows all entries with [FILE] and [DIR] prefixes for quick identification, plus file sizes for capacity planning. " +
-        "Supports sorting by name or size for flexible organization views. " +
-        "Useful for analyzing directory composition and identifying large files. " +
-        "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(
-        ListDirectoryWithSizesArgsSchema
-      ) as ToolInput,
-    },
-    {
-      name: "directory_tree",
-      description:
-        "Generate hierarchical tree representations of directory structures as JSON. " +
-        "Each node contains 'name' and 'type' (file/directory) properties, with directories including a 'children' array for nested contents. " +
-        "Files omit the children property, while directories always include it (even if empty). " +
-        "Output uses 2-space indentation for clean formatting and easy parsing. " +
-        "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(DirectoryTreeArgsSchema) as ToolInput,
     },
     {
       name: "move_file",
@@ -194,6 +189,393 @@ export function getFileSystemTools() {
   ];
 }
 
+// ============================================================================
+// UNIFIED LIST_DIRECTORY IMPLEMENTATION
+// ============================================================================
+
+/**
+ * Helper: Collect file entry metadata
+ */
+async function collectFileEntry(
+  entryPath: string,
+  dirent: any
+): Promise<FileEntry> {
+  try {
+    const stats = await fs.stat(entryPath);
+    return {
+      name: dirent.name,
+      path: entryPath,
+      isDirectory: dirent.isDirectory(),
+      size: stats.size,
+      modifiedTime: stats.mtime,
+    };
+  } catch (error) {
+    // Return minimal entry on error
+    return {
+      name: dirent.name,
+      path: entryPath,
+      isDirectory: dirent.isDirectory(),
+      size: 0,
+      modifiedTime: new Date(0),
+    };
+  }
+}
+
+/**
+ * Helper: Filter entries and collect metadata
+ */
+async function filterAndCollectEntries(
+  rawEntries: any[],
+  basePath: string,
+  args: ListDirectoryArgs
+): Promise<ListingResult> {
+  let excludedByPatterns = 0;
+  let excludedByIgnoreRules = 0;
+  const entries: FileEntry[] = [];
+
+  for (const dirent of rawEntries) {
+    // Check global ignore rules
+    if (dirent.isDirectory() && shouldIgnoreFolder(dirent.name)) {
+      excludedByIgnoreRules++;
+      continue;
+    }
+
+    // Check user exclude patterns
+    if (args.excludePatterns && args.excludePatterns.length > 0) {
+      const shouldExclude = args.excludePatterns.some((pattern) => {
+        return minimatch(dirent.name, pattern, { dot: true });
+      });
+      if (shouldExclude) {
+        excludedByPatterns++;
+        continue;
+      }
+    }
+
+    // Collect entry with metadata
+    const entryPath = path.join(basePath, dirent.name);
+    const entry = await collectFileEntry(entryPath, dirent);
+    entries.push(entry);
+  }
+
+  return { entries, excludedByPatterns, excludedByIgnoreRules };
+}
+
+/**
+ * Helper: Recursively expand directory entries for tree/json formats
+ */
+async function recursivelyExpandEntries(
+  entries: FileEntry[],
+  args: ListDirectoryArgs
+): Promise<void> {
+  for (const entry of entries) {
+    if (entry.isDirectory) {
+      try {
+        const subEntries = await fs.readdir(entry.path, {
+          withFileTypes: true,
+        });
+        const { entries: children } = await filterAndCollectEntries(
+          subEntries,
+          entry.path,
+          args
+        );
+        entry.children = children;
+
+        // Recurse
+        await recursivelyExpandEntries(children, args);
+      } catch (error) {
+        entry.children = [];
+      }
+    }
+  }
+}
+
+/**
+ * Helper: Sort entries (Gemini-inspired - always dirs first, then by criterion)
+ */
+function sortEntries(entries: FileEntry[], sortBy: string): FileEntry[] {
+  return [...entries].sort((a, b) => {
+    // Always group directories first (Gemini best practice)
+    if (a.isDirectory && !b.isDirectory) return -1;
+    if (!a.isDirectory && b.isDirectory) return 1;
+
+    // Then apply sort criterion
+    if (sortBy === "size") {
+      return b.size - a.size; // Descending by size
+    }
+
+    // Default: alphabetical by name
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/**
+ * Helper: Count files recursively
+ */
+function countFiles(entries: FileEntry[]): number {
+  let count = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory) {
+      count++;
+    }
+    if (entry.children) {
+      count += countFiles(entry.children);
+    }
+  }
+  return count;
+}
+
+/**
+ * Helper: Count directories recursively
+ */
+function countDirectories(entries: FileEntry[]): number {
+  let count = 0;
+  for (const entry of entries) {
+    if (entry.isDirectory) {
+      count++;
+      if (entry.children) {
+        count += countDirectories(entry.children);
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * Helper: Calculate total size recursively
+ */
+function calculateTotalSize(entries: FileEntry[]): number {
+  let total = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory) {
+      total += entry.size;
+    }
+    if (entry.children) {
+      total += calculateTotalSize(entry.children);
+    }
+  }
+  return total;
+}
+
+/**
+ * Format: Simple (default)
+ */
+function formatSimple(
+  entries: FileEntry[],
+  excludedByPatterns: number,
+  excludedByIgnoreRules: number
+): { content: any[] } {
+  const lines = entries.map((entry) => {
+    const prefix = entry.isDirectory ? "[DIR]" : "[FILE]";
+    return `${prefix} ${entry.name}`;
+  });
+
+  // Summary
+  const totalFiles = entries.filter((e) => !e.isDirectory).length;
+  const totalDirs = entries.filter((e) => e.isDirectory).length;
+  lines.push("");
+  lines.push(`Total: ${totalFiles} files, ${totalDirs} directories`);
+
+  // Show exclusion counts
+  const totalExcluded = excludedByPatterns + excludedByIgnoreRules;
+  if (totalExcluded > 0) {
+    lines.push(`(${totalExcluded} filtered by ignore rules)`);
+  }
+
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+/**
+ * Format: Detailed (with sizes and metadata)
+ */
+function formatDetailed(
+  entries: FileEntry[],
+  excludedByPatterns: number,
+  excludedByIgnoreRules: number
+): { content: any[] } {
+  const header = "Type      Name                  Size        Modified";
+  const separator = "-".repeat(70);
+
+  const lines = entries.map((entry) => {
+    const type = entry.isDirectory ? "[DIR]" : "[FILE]";
+    const name = entry.name.padEnd(20);
+    const size = entry.isDirectory
+      ? "-".padStart(11)
+      : formatSize(entry.size).padStart(11);
+    const mtime = entry.modifiedTime
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+
+    return `${type}     ${name} ${size} ${mtime}`;
+  });
+
+  // Summary
+  const totalFiles = entries.filter((e) => !e.isDirectory).length;
+  const totalDirs = entries.filter((e) => e.isDirectory).length;
+  const totalSize = entries.reduce(
+    (sum, e) => sum + (e.isDirectory ? 0 : e.size),
+    0
+  );
+
+  const output = [
+    header,
+    separator,
+    ...lines,
+    "",
+    `Total: ${totalFiles} files, ${totalDirs} directories`,
+    `Combined size: ${formatSize(totalSize)}`,
+  ];
+
+  const totalExcluded = excludedByPatterns + excludedByIgnoreRules;
+  if (totalExcluded > 0) {
+    output.push(`(${totalExcluded} filtered by ignore rules)`);
+  }
+
+  return { content: [{ type: "text", text: output.join("\n") }] };
+}
+
+/**
+ * Format: Tree (hierarchical text tree)
+ */
+function formatTree(
+  entries: FileEntry[],
+  excludedByPatterns: number,
+  prefix: string = "",
+  isRoot: boolean = true
+): { content: any[] } {
+  const lines: string[] = [];
+
+  if (isRoot) {
+    lines.push(".");
+  }
+
+  entries.forEach((entry, index) => {
+    const isLast = index === entries.length - 1;
+    const connector = isLast ? "└── " : "├── ";
+    const suffix = entry.isDirectory ? "/" : "";
+
+    lines.push(`${prefix}${connector}${entry.name}${suffix}`);
+
+    if (entry.children && entry.children.length > 0) {
+      const childPrefix = prefix + (isLast ? "    " : "│   ");
+      const childResult = formatTree(entry.children, 0, childPrefix, false);
+      lines.push(
+        ...childResult.content[0].text.split("\n").filter((l: string) => l)
+      );
+    }
+  });
+
+  if (isRoot) {
+    const totalFiles = countFiles(entries);
+    const totalDirs = countDirectories(entries);
+    lines.push("");
+    lines.push(`${totalDirs} directories, ${totalFiles} files`);
+
+    if (excludedByPatterns > 0) {
+      lines.push(`(${excludedByPatterns} entries excluded by patterns)`);
+    }
+  }
+
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+/**
+ * Format: JSON (structured data)
+ */
+function formatJson(
+  entries: FileEntry[],
+  basePath: string,
+  excludedByPatterns: number,
+  excludedByIgnoreRules: number
+): { content: any[] } {
+  const totalFiles = countFiles(entries);
+  const totalDirs = countDirectories(entries);
+  const totalSize = calculateTotalSize(entries);
+
+  const output = {
+    path: basePath,
+    entries: entries.map((e) => ({
+      name: e.name,
+      type: e.isDirectory ? "directory" : "file",
+      path: e.path,
+      isDirectory: e.isDirectory,
+      size: e.size,
+      modifiedTime: e.modifiedTime.toISOString(),
+      ...(e.children && { children: e.children }),
+    })),
+    summary: {
+      totalFiles,
+      totalDirectories: totalDirs,
+      totalSize,
+      totalSizeFormatted: formatSize(totalSize),
+      excludedByPatterns,
+      excludedByIgnoreRules,
+    },
+  };
+
+  return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
+}
+
+/**
+ * Format output based on selected format
+ */
+function formatOutput(
+  entries: FileEntry[],
+  args: ListDirectoryArgs,
+  excludedByPatterns: number,
+  excludedByIgnoreRules: number
+): { content: any[] } {
+  switch (args.format) {
+    case "simple":
+      return formatSimple(entries, excludedByPatterns, excludedByIgnoreRules);
+    case "detailed":
+      return formatDetailed(entries, excludedByPatterns, excludedByIgnoreRules);
+    case "tree":
+      return formatTree(entries, excludedByPatterns);
+    case "json":
+      return formatJson(
+        entries,
+        args.path,
+        excludedByPatterns,
+        excludedByIgnoreRules
+      );
+    default:
+      return formatSimple(entries, excludedByPatterns, excludedByIgnoreRules);
+  }
+}
+
+/**
+ * Main unified list_directory implementation
+ */
+async function listDirectory(
+  args: ListDirectoryArgs
+): Promise<{ content: any[] }> {
+  // Step 1: Validate path
+  const validPath = await validatePath(args.path);
+
+  // Step 2: Read directory
+  const rawEntries = await fs.readdir(validPath, { withFileTypes: true });
+
+  // Step 3: Apply filtering and collect metadata
+  const { entries, excludedByPatterns, excludedByIgnoreRules } =
+    await filterAndCollectEntries(rawEntries, validPath, args);
+
+  // Step 4: Handle recursive formats (tree and json)
+  if (args.format === "tree" || args.format === "json") {
+    await recursivelyExpandEntries(entries, args);
+  }
+
+  // Step 5: Apply sorting (always dirs first, then by sortBy)
+  const sorted = sortEntries(entries, args.sortBy || "name");
+
+  // Step 6: Format output
+  return formatOutput(sorted, args, excludedByPatterns, excludedByIgnoreRules);
+}
+
+// ============================================================================
+// END UNIFIED LIST_DIRECTORY IMPLEMENTATION
+// ============================================================================
+
 export async function handleFileSystemTool(name: string, args: any) {
   switch (name) {
     case "create_directory": {
@@ -222,194 +604,7 @@ export async function handleFileSystemTool(name: string, args: any) {
           `Invalid arguments for list_directory: ${parsed.error}`
         );
       }
-      const validPath = await validatePath(parsed.data.path);
-      const entries = await fs.readdir(validPath, { withFileTypes: true });
-
-      // Filter out ignored folders
-      const filteredEntries = entries.filter((entry) => {
-        // Always include files
-        if (!entry.isDirectory()) {
-          return true;
-        }
-        // Filter out directories that should be ignored
-        return !shouldIgnoreFolder(entry.name);
-      });
-
-      const formatted = filteredEntries
-        .map(
-          (entry) => `${entry.isDirectory() ? "[DIR]" : "[FILE]"} ${entry.name}`
-        )
-        .join("\n");
-      return {
-        content: [{ type: "text", text: formatted }],
-      };
-    }
-
-    case "list_directory_with_sizes": {
-      const parsed = ListDirectoryWithSizesArgsSchema.safeParse(args);
-      if (!parsed.success) {
-        throw new Error(
-          `Invalid arguments for list_directory_with_sizes: ${parsed.error}`
-        );
-      }
-      const validPath = await validatePath(parsed.data.path);
-      const entries = await fs.readdir(validPath, { withFileTypes: true });
-
-      // Filter out ignored folders before processing
-      const filteredEntries = entries.filter((entry) => {
-        // Always include files
-        if (!entry.isDirectory()) {
-          return true;
-        }
-        // Filter out directories that should be ignored
-        return !shouldIgnoreFolder(entry.name);
-      });
-
-      // Get detailed information for each entry
-      const detailedEntries = await Promise.all(
-        filteredEntries.map(async (entry) => {
-          const entryPath = path.join(validPath, entry.name);
-          try {
-            const stats = await fs.stat(entryPath);
-            return {
-              name: entry.name,
-              isDirectory: entry.isDirectory(),
-              size: stats.size,
-              mtime: stats.mtime,
-            };
-          } catch (error) {
-            return {
-              name: entry.name,
-              isDirectory: entry.isDirectory(),
-              size: 0,
-              mtime: new Date(0),
-            };
-          }
-        })
-      );
-
-      // Sort entries based on sortBy parameter
-      const sortedEntries = [...detailedEntries].sort((a, b) => {
-        if (parsed.data.sortBy === "size") {
-          return b.size - a.size; // Descending by size
-        }
-        // Default sort by name
-        return a.name.localeCompare(b.name);
-      });
-
-      // Format the output
-      const formattedEntries = sortedEntries.map(
-        (entry) =>
-          `${entry.isDirectory ? "[DIR]" : "[FILE]"} ${entry.name.padEnd(30)} ${
-            entry.isDirectory ? "" : formatSize(entry.size).padStart(10)
-          }`
-      );
-
-      // Add summary
-      const totalFiles = detailedEntries.filter((e) => !e.isDirectory).length;
-      const totalDirs = detailedEntries.filter((e) => e.isDirectory).length;
-      const totalSize = detailedEntries.reduce(
-        (sum, entry) => sum + (entry.isDirectory ? 0 : entry.size),
-        0
-      );
-
-      const summary = [
-        "",
-        `Total: ${totalFiles} files, ${totalDirs} directories`,
-        `Combined size: ${formatSize(totalSize)}`,
-      ];
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: [...formattedEntries, ...summary].join("\n"),
-          },
-        ],
-      };
-    }
-
-    case "directory_tree": {
-      const parsed = DirectoryTreeArgsSchema.safeParse(args);
-      if (!parsed.success) {
-        throw new Error(
-          `Invalid arguments for directory_tree: ${parsed.error}`
-        );
-      }
-
-      interface TreeEntry {
-        name: string;
-        type: "file" | "directory";
-        children?: TreeEntry[];
-      }
-
-      const rootPath = parsed.data.path;
-
-      // Combine user-specified patterns with global ignored folders
-      const allExcludePatterns = [
-        ...parsed.data.excludePatterns,
-        ...getIgnoredFolders(),
-      ];
-
-      async function buildTree(
-        currentPath: string,
-        userExcludePatterns: string[] = []
-      ): Promise<TreeEntry[]> {
-        const validPath = await validatePath(currentPath);
-        const entries = await fs.readdir(validPath, { withFileTypes: true });
-        const result: TreeEntry[] = [];
-
-        for (const entry of entries) {
-          const relativePath = path.relative(
-            rootPath,
-            path.join(currentPath, entry.name)
-          );
-
-          // Check user-specified patterns
-          const shouldExcludeByPattern = userExcludePatterns.some((pattern) => {
-            if (pattern.includes("*")) {
-              return minimatch(relativePath, pattern, { dot: true });
-            }
-            // For files: match exact name or as part of path
-            // For directories: match as directory path
-            return (
-              minimatch(relativePath, pattern, { dot: true }) ||
-              minimatch(relativePath, `**/${pattern}`, { dot: true }) ||
-              minimatch(relativePath, `**/${pattern}/**`, { dot: true })
-            );
-          });
-
-          // Also check global ignored folders for top-level entries
-          const shouldExcludeByGlobal =
-            entry.isDirectory() && shouldIgnoreFolder(entry.name);
-
-          if (shouldExcludeByPattern || shouldExcludeByGlobal) continue;
-
-          const entryData: TreeEntry = {
-            name: entry.name,
-            type: entry.isDirectory() ? "directory" : "file",
-          };
-
-          if (entry.isDirectory()) {
-            const subPath = path.join(currentPath, entry.name);
-            entryData.children = await buildTree(subPath, userExcludePatterns);
-          }
-
-          result.push(entryData);
-        }
-
-        return result;
-      }
-
-      const treeData = await buildTree(rootPath, allExcludePatterns);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(treeData, null, 2),
-          },
-        ],
-      };
+      return await listDirectory(parsed.data);
     }
 
     case "move_file": {
