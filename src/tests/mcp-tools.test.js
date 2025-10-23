@@ -109,11 +109,11 @@ async function testAllTools() {
     });
     console.log("✅ File info:", fileInfoResult.content[0].text);
 
-    // 9. List directory with sizes
+    // 9. List directory with sizes (using unified list_directory)
     console.log("\n📊 9. Listing directory with sizes...");
     const listWithSizesResult = await client.callTool({
-      name: "list_directory_with_sizes",
-      arguments: { path: testDir, sortBy: "size" },
+      name: "list_directory",
+      arguments: { path: testDir, format: "detailed", sortBy: "size" },
     });
     console.log(
       "✅ Directory with sizes:",
@@ -158,24 +158,36 @@ async function testAllTools() {
     });
     console.log("✅ File edited (check diff output)");
 
-    // 13. Search for files
+    // 13. Search for files using glob
     console.log("\n🔍 13. Searching for files...");
     const searchResult = await client.callTool({
-      name: "search_files",
+      name: "glob_files",
       arguments: {
         path: testDir,
-        pattern: "*.txt",
+        pattern: "**/*.txt",
       },
     });
     console.log("✅ Search results:", searchResult.content[0].text);
 
-    // 14. Get directory tree
+    // 14. Get directory tree (using unified list_directory with tree format)
     console.log("\n🌳 14. Getting directory tree...");
     const treeResult = await client.callTool({
-      name: "directory_tree",
-      arguments: { path: testDir },
+      name: "list_directory",
+      arguments: { path: testDir, format: "tree" },
     });
-    console.log("✅ Directory tree:", treeResult.content[0].text);
+    console.log("✅ Directory tree (text):", treeResult.content[0].text);
+
+    // 14b. Get directory structure as JSON (new format option)
+    console.log("\n📊 14b. Getting directory as JSON...");
+    const jsonResult = await client.callTool({
+      name: "list_directory",
+      arguments: { path: testDir, format: "json" },
+    });
+    const jsonData = JSON.parse(jsonResult.content[0].text);
+    console.log(
+      "✅ Directory JSON:",
+      `Found ${jsonData.summary.totalFiles} files and ${jsonData.summary.totalDirectories} directories`
+    );
 
     // 15. Read multiple files
     console.log("\n📚 15. Reading multiple files...");
