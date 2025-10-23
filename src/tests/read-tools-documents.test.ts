@@ -134,9 +134,9 @@ describe("read_multiple_files with documents", () => {
 
   test("reads mixed text and document files", async () => {
     const result = await handleReadTool("read_multiple_files", {
-      paths: [
-        path.join(FIXTURES_DIR, "text.txt"),
-        path.join(SAMPLE_FILES_DIR, "sample.pdf"),
+      files: [
+        { path: path.join(FIXTURES_DIR, "text.txt") },
+        { path: path.join(SAMPLE_FILES_DIR, "sample.pdf") },
       ],
     });
 
@@ -162,10 +162,10 @@ describe("read_multiple_files with documents", () => {
 
   test("handles errors gracefully in batch operations", async () => {
     const result = await handleReadTool("read_multiple_files", {
-      paths: [
-        path.join(FIXTURES_DIR, "text.txt"),
-        path.join(SAMPLE_FILES_DIR, "nonexistent.pdf"),
-        path.join(SAMPLE_FILES_DIR, "sample.pdf"),
+      files: [
+        { path: path.join(FIXTURES_DIR, "text.txt") },
+        { path: path.join(SAMPLE_FILES_DIR, "nonexistent.pdf") },
+        { path: path.join(SAMPLE_FILES_DIR, "sample.pdf") },
       ],
     });
 
@@ -183,7 +183,7 @@ describe("read_multiple_files with documents", () => {
 
   test("returns consistent format for document files", async () => {
     const result = await handleReadTool("read_multiple_files", {
-      paths: [path.join(SAMPLE_FILES_DIR, "sample.pdf")],
+      files: [{ path: path.join(SAMPLE_FILES_DIR, "sample.pdf") }],
     });
 
     const content = result.content[0] as { type: string; text: string };

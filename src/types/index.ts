@@ -51,11 +51,13 @@ export const ReadFileArgsSchema = z
   .object({
     path: z.string().describe("Path to the file to read"),
     mode: z
-      .enum(["full", "head", "tail"])
+      .enum(["full", "head", "tail", "range"])
       .optional()
       .default("full")
       .describe(
-        "Read mode: 'full' reads entire file, 'head' reads first N lines, 'tail' reads last N lines"
+        "Read mode: 'full' reads entire file, 'head' reads first N lines, " +
+          "'tail' reads last N lines, 'range' reads lines from startLine to endLine (inclusive, 1-indexed). " +
+          "Document files (PDF, DOCX, etc.) ignore mode and always return full content."
       ),
     lines: z
       .number()
@@ -65,22 +67,73 @@ export const ReadFileArgsSchema = z
       .describe(
         "Number of lines to read (required when mode is 'head' or 'tail', must be positive integer)"
       ),
+    startLine: z
+      .number()
+      .positive()
+      .int()
+      .optional()
+      .describe(
+        "Starting line number (1-indexed, required when mode is 'range')"
+      ),
+    endLine: z
+      .number()
+      .positive()
+      .int()
+      .optional()
+      .describe(
+        "Ending line number (1-indexed, inclusive, required when mode is 'range')"
+      ),
   })
   .refine(
     (data) => {
-      // If mode is head or tail, lines must be provided
-      if ((data.mode === "head" || data.mode === "tail") && !data.lines) {
-        return false;
+      // Validation for head/tail modes
+      if (data.mode === "head" || data.mode === "tail") {
+        // lines must be provided
+        if (!data.lines) {
+          return false;
+        }
+        // startLine and endLine should NOT be provided
+        if (data.startLine !== undefined || data.endLine !== undefined) {
+          return false;
+        }
       }
-      // If mode is full, lines should not be provided
-      if (data.mode === "full" && data.lines !== undefined) {
-        return false;
+
+      // Validation for range mode
+      if (data.mode === "range") {
+        // Both startLine and endLine must be provided
+        if (!data.startLine || !data.endLine) {
+          return false;
+        }
+        // startLine must be <= endLine
+        if (data.startLine > data.endLine) {
+          return false;
+        }
+        // lines parameter should NOT be provided
+        if (data.lines !== undefined) {
+          return false;
+        }
       }
+
+      // Validation for full mode
+      if (data.mode === "full") {
+        // No optional parameters should be provided
+        if (
+          data.lines !== undefined ||
+          data.startLine !== undefined ||
+          data.endLine !== undefined
+        ) {
+          return false;
+        }
+      }
+
       return true;
     },
     {
       message:
-        "When mode is 'head' or 'tail', 'lines' parameter is required. When mode is 'full', 'lines' should not be provided.",
+        "Invalid parameter combination. " +
+        "For 'head' or 'tail' mode: 'lines' is required (startLine/endLine not allowed). " +
+        "For 'range' mode: both 'startLine' and 'endLine' are required (startLine <= endLine), 'lines' not allowed. " +
+        "For 'full' mode: no optional parameters should be provided.",
     }
   );
 
@@ -88,12 +141,90 @@ export const ReadMediaFileArgsSchema = z.object({
   path: z.string(),
 });
 
+// Individual file read request schema (reuses ReadFileArgs structure)
+export const ReadFileRequestSchema = z
+  .object({
+    path: z.string().describe("Path to the file to read"),
+    mode: z
+      .enum(["full", "head", "tail", "range"])
+      .optional()
+      .default("full")
+      .describe(
+        "Read mode: 'full' reads entire file, 'head' reads first N lines, " +
+          "'tail' reads last N lines, 'range' reads lines from startLine to endLine (inclusive, 1-indexed). " +
+          "Document files (PDF, DOCX, etc.) ignore mode and always return full content."
+      ),
+    lines: z
+      .number()
+      .positive()
+      .int()
+      .optional()
+      .describe(
+        "Number of lines to read (required when mode is 'head' or 'tail', must be positive integer)"
+      ),
+    startLine: z
+      .number()
+      .positive()
+      .int()
+      .optional()
+      .describe(
+        "Starting line number (1-indexed, required when mode is 'range')"
+      ),
+    endLine: z
+      .number()
+      .positive()
+      .int()
+      .optional()
+      .describe(
+        "Ending line number (1-indexed, inclusive, required when mode is 'range')"
+      ),
+  })
+  .refine(
+    (data) => {
+      // Same validation logic as ReadFileArgsSchema
+      if (data.mode === "head" || data.mode === "tail") {
+        if (!data.lines) return false;
+        if (data.startLine !== undefined || data.endLine !== undefined)
+          return false;
+      }
+
+      if (data.mode === "range") {
+        if (!data.startLine || !data.endLine) return false;
+        if (data.startLine > data.endLine) return false;
+        if (data.lines !== undefined) return false;
+      }
+
+      if (data.mode === "full") {
+        if (
+          data.lines !== undefined ||
+          data.startLine !== undefined ||
+          data.endLine !== undefined
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+    {
+      message:
+        "Invalid parameter combination. " +
+        "For 'head' or 'tail' mode: 'lines' is required (startLine/endLine not allowed). " +
+        "For 'range' mode: both 'startLine' and 'endLine' are required (startLine <= endLine), 'lines' not allowed. " +
+        "For 'full' mode: no optional parameters should be provided.",
+    }
+  );
+
 export const ReadMultipleFilesArgsSchema = z.object({
-  paths: z
-    .array(z.string())
-    .min(1, "At least one file path must be provided")
+  files: z
+    .array(ReadFileRequestSchema)
+    .min(1, "At least one file must be provided")
+    .max(50, "Maximum 50 files per operation")
     .describe(
-      "Array of file paths to read. Each path must be a string pointing to a valid file within allowed directories."
+      "Array of file read requests. Each request can specify its own read mode, " +
+        "allowing you to read different files with different modes in a single operation. " +
+        "For example, you can read the last 100 lines of one log file while reading " +
+        "lines 50-150 from another file simultaneously."
     ),
 });
 
@@ -343,6 +474,7 @@ export const ShellCommandArgsSchema = z.object({
 // Type exports
 export type ReadFileArgs = z.infer<typeof ReadFileArgsSchema>;
 export type ReadMediaFileArgs = z.infer<typeof ReadMediaFileArgsSchema>;
+export type ReadFileRequest = z.infer<typeof ReadFileRequestSchema>;
 export type ReadMultipleFilesArgs = z.infer<typeof ReadMultipleFilesArgsSchema>;
 export type WriteFileArgs = z.infer<typeof WriteFileArgsSchema>;
 export type WriteMultipleFilesArgs = z.infer<

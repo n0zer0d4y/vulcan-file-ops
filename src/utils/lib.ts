@@ -944,6 +944,80 @@ export async function headFile(
   }
 }
 
+/**
+ * Read a specific range of lines from a file
+ * Memory-efficient implementation that reads sequentially and stops after reaching endLine
+ * @param filePath - Path to the file to read
+ * @param startLine - Starting line number (1-indexed, inclusive)
+ * @param endLine - Ending line number (1-indexed, inclusive)
+ * @returns Promise resolving to the requested lines as a string
+ */
+export async function rangeFile(
+  filePath: string,
+  startLine: number,
+  endLine: number
+): Promise<string> {
+  const CHUNK_SIZE = 1024; // Read 1KB at a time
+  const fileHandle = await fs.open(filePath, "r");
+
+  try {
+    const targetLines: string[] = [];
+    let currentLineNumber = 0;
+    let buffer = "";
+    let bytesRead = 0;
+    const chunk = Buffer.alloc(CHUNK_SIZE);
+
+    // Read file sequentially until we reach the end line
+    while (currentLineNumber < endLine) {
+      const result = await fileHandle.read(chunk, 0, chunk.length, bytesRead);
+
+      // End of file reached
+      if (result.bytesRead === 0) {
+        // Process any remaining buffer content
+        if (buffer.length > 0 && currentLineNumber + 1 >= startLine) {
+          currentLineNumber++;
+          if (currentLineNumber >= startLine && currentLineNumber <= endLine) {
+            targetLines.push(buffer);
+          }
+        }
+        break;
+      }
+
+      bytesRead += result.bytesRead;
+      buffer += chunk.slice(0, result.bytesRead).toString("utf-8");
+
+      // Process complete lines in buffer
+      let newLineIndex = buffer.indexOf("\n");
+      while (newLineIndex !== -1) {
+        const line = buffer.slice(0, newLineIndex);
+        buffer = buffer.slice(newLineIndex + 1);
+        currentLineNumber++;
+
+        // Check if this line is within our target range
+        if (currentLineNumber >= startLine && currentLineNumber <= endLine) {
+          targetLines.push(line);
+        }
+
+        // Early exit if we've collected all needed lines
+        if (currentLineNumber >= endLine) {
+          break;
+        }
+
+        newLineIndex = buffer.indexOf("\n");
+      }
+
+      // Early exit if we've reached the end line
+      if (currentLineNumber >= endLine) {
+        break;
+      }
+    }
+
+    return targetLines.join("\n");
+  } finally {
+    await fileHandle.close();
+  }
+}
+
 export async function searchFilesWithValidation(
   rootPath: string,
   pattern: string,
