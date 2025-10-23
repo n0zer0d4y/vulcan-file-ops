@@ -25,11 +25,20 @@ describe("delete_files tool", () => {
   });
 
   afterEach(async () => {
-    // Cleanup
+    // Cleanup after each test
     try {
       await fs.rm(testDir, { recursive: true, force: true });
     } catch (error) {
-      // Ignore cleanup errors
+      console.warn(`Failed to clean up ${testDir}:`, error);
+    }
+  });
+
+  afterAll(async () => {
+    // Final cleanup to catch any missed directories
+    try {
+      await fs.rm(testDir, { recursive: true, force: true });
+    } catch (error) {
+      // Directory already cleaned up, which is fine
     }
   });
 

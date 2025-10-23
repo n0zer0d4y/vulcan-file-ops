@@ -1,9 +1,8 @@
 ﻿# Filesystem of a Down MCP Server
 
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
 [![MCP Server](https://badge.mcpx.dev?type=server "MCP Server")](https://modelcontextprotocol.io)
 [![MCP Server with Tools](https://badge.mcpx.dev?type=server&features=tools "MCP server with tools")](https://modelcontextprotocol.io)
-![MCP Dev](https://badge.mcpx.dev?type=dev "MCP Dev")
-![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
 [![Development Status](https://img.shields.io/badge/status-production--stable-green.svg)](https://pypi.org/project/chronos-protocol/)
 [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -267,9 +266,9 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 ### Available Tools
 
-- **read_file**: Read file contents with flexible modes (full, head, tail) for efficient file access. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
+- **read_file**: Read file contents with flexible modes (full, head, tail, range) for efficient file access. Range mode supports arbitrary line ranges (e.g., lines 50-100). Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
 - **read_media_file**: Process image and audio files with MIME type detection
-- **read_multiple_files**: Batch file reading with error isolation. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
+- **read_multiple_files**: Batch file reading with per-file mode control and error isolation. Each file can specify its own read mode (full, head, tail, or range) for maximum flexibility. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
 - **write_file**: Create or replace file content. Supports HTML-to-PDF/DOCX conversion with rich formatting
 - **write_multiple_files**: Create or replace multiple files concurrently. Supports HTML-to-PDF/DOCX conversion
 - **edit_file**: Perform intelligent file modifications with three-tier matching (exact/flexible/fuzzy) and detailed diff output
@@ -311,7 +310,12 @@ The AI will use the `register_directory` tool to gain access, then perform opera
   - **OpenDocument Text** (`.odt`) - Plain text extraction via `officeparser`
   - **OpenDocument Presentation** (`.odp`) - Plain text extraction via `officeparser`
   - **OpenDocument Spreadsheet** (`.ods`) - Plain text extraction via `officeparser`
-- `read_file` supports three modes for text files: full (entire file), head (first N lines), tail (last N lines)
+- `read_file` supports four modes for text files:
+  - **full**: Read entire file
+  - **head**: Read first N lines
+  - **tail**: Read last N lines
+  - **range**: Read arbitrary line range (e.g., lines 50-100, inclusive, 1-indexed)
+- `read_multiple_files` allows per-file mode specification - each file can use a different mode in a single operation
 - Document files ignore mode parameters and always return full content
 - Will produce garbled output for unsupported binary files (images, executables, compressed files)
 
