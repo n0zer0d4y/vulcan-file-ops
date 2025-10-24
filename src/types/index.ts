@@ -322,8 +322,10 @@ export const EditFileArgsSchema = z.object({
     ),
 });
 
-export const CreateDirectoryArgsSchema = z.object({
-  path: z.string(),
+export const MakeDirectoryArgsSchema = z.object({
+  paths: z
+    .union([z.string(), z.array(z.string())])
+    .describe("Single directory path or array of directory paths to create"),
 });
 
 // Unified directory listing schema - replaces old list_directory, list_directory_with_sizes, and directory_tree
@@ -505,7 +507,7 @@ export type WriteMultipleFilesArgs = z.infer<
 >;
 export type EditOperationType = z.infer<typeof EditOperation>;
 export type EditFileArgs = z.infer<typeof EditFileArgsSchema>;
-export type CreateDirectoryArgs = z.infer<typeof CreateDirectoryArgsSchema>;
+export type MakeDirectoryArgs = z.infer<typeof MakeDirectoryArgsSchema>;
 export type ListDirectoryArgs = z.infer<typeof ListDirectoryArgsSchema>;
 export type ListDirectoryWithSizesArgs = z.infer<
   typeof ListDirectoryWithSizesArgsSchema

@@ -264,34 +264,239 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 ## API
 
-### Available Tools
+### Available Tools by Categories
 
-- **read_file**: Read file contents with flexible modes (full, head, tail, range) for efficient file access. Range mode supports arbitrary line ranges (e.g., lines 50-100). Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
-- **read_media_file**: Process image and audio files with MIME type detection
-- **read_multiple_files**: Batch file reading with per-file mode control and error isolation. Each file can specify its own read mode (full, head, tail, or range) for maximum flexibility. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
-- **write_file**: Create or replace file content. Supports HTML-to-PDF/DOCX conversion with rich formatting
-- **write_multiple_files**: Create or replace multiple files concurrently. Supports HTML-to-PDF/DOCX conversion
-- **edit_file**: Perform intelligent file modifications with three-tier matching (exact/flexible/fuzzy) and detailed diff output
-- **create_directory**: Generate directory structures with parent creation
-- **list_directory**: Comprehensive directory listing with multiple output formats (simple, detailed with sizes, hierarchical tree, structured JSON). Supports sorting by name or size, pattern-based filtering, and automatic filtering of configured ignored folders. Replaces previous list_directory_with_sizes and directory_tree tools
-- **move_file**: Relocate or rename files and directories
-- **file_operations**: Perform single or bulk file operations (move, copy, rename) on multiple files and directories concurrently
-- **delete_files**: Delete single or multiple files and directories with optional recursive deletion
-- **glob_files**: Locate files using glob pattern matching with exclusion support
-- **grep_files**: Search for text patterns within file contents with regex support and multiple output modes
-- **get_file_info**: Retrieve comprehensive file and directory metadata
-- **register_directory**: Enable runtime access to new directories
-- **list_allowed_directories**: Display currently accessible directory paths
-- **execute_shell**: Execute shell commands with security controls and approval system
+#### Read Operations
 
-### Tool Categories
+##### read_file
 
-- **read**: File content access operations (read_file, read_media_file, read_multiple_files)
-- **write**: File modification operations (write_file, write_multiple_files, edit_file)
-- **filesystem**: Directory and file system management (create_directory, list_directory, move_file, file_operations, delete_files, get_file_info, register_directory, list_allowed_directories)
-- **search**: File and content discovery operations (glob_files, grep_files)
-- **shell**: Shell command execution (execute_shell)
-- **all**: Complete tool set (default behavior)
+Read file contents with flexible modes (full, head, tail, range)
+
+**Input:**
+
+- `path` (string): File path
+- `mode` (string, optional): Read mode
+  - `full` - Read entire file (default)
+  - `head` - Read first N lines
+  - `tail` - Read last N lines
+  - `range` - Read arbitrary line range (e.g., lines 50-100)
+- `lines` (number, optional): Number of lines for head/tail mode
+- `startLine` (number, optional): Start line for range mode
+- `endLine` (number, optional): End line for range mode
+
+**Output:** File contents as text. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
+
+##### read_media_file
+
+Read image and audio files
+
+**Input:**
+
+- `path` (string): File path
+
+**Output:** Base64-encoded data with MIME type. Supports images (PNG, JPG, GIF, WebP, BMP, SVG) and audio (MP3, WAV, OGG, FLAC)
+
+##### read_multiple_files
+
+Batch read multiple files concurrently
+
+**Input:**
+
+- `files` (array): List of file objects with path and optional mode settings
+
+**Output:** Contents of all files. Failed reads don't stop the operation
+
+#### Write Operations
+
+##### write_file
+
+Create or replace file content
+
+**Input:**
+
+- `path` (string): File path
+- `content` (string): File content (text or HTML for PDF/DOCX conversion)
+
+**Output:** Success confirmation. Supports HTML-to-PDF/DOCX conversion with rich formatting
+
+##### write_multiple_files
+
+Create or replace multiple files concurrently
+
+**Input:**
+
+- `files` (array): List of file objects with path and content
+
+**Output:** Status for each file. Failed writes don't stop other files
+
+##### edit_file
+
+Intelligent file modification with pattern matching
+
+**Input:**
+
+- `path` (string): File path
+- `edits` (array): List of edit operations (oldText, newText)
+- `dryRun` (boolean, optional): Preview changes without writing
+- `matchingStrategy` (string, optional): Matching strategy
+  - `exact` - Character-for-character match
+  - `flexible` - Whitespace-insensitive matching
+  - `fuzzy` - Token-based regex matching
+  - `auto` - Try exact → flexible → fuzzy (default)
+
+**Output:** Detailed diff with statistics showing changes made
+
+#### Filesystem Operations
+
+##### make_directory
+
+Create single or multiple directories (like Unix `mkdir -p`)
+
+**Input:**
+
+- `paths` (string | array): Single path or array of paths
+
+**Output:** Success confirmation. Creates parent directories recursively, idempotent
+
+##### list_directory
+
+List directory contents with multiple output formats
+
+**Input:**
+
+- `path` (string): Directory path
+- `format` (string, optional): Output format
+  - `simple` - Basic [DIR]/[FILE] listing (default)
+  - `detailed` - With sizes, timestamps, and statistics
+  - `tree` - Hierarchical text tree view
+  - `json` - Structured data with full metadata
+- `sortBy` (string, optional): Sort order
+  - `name` - Alphabetical (default)
+  - `size` - Largest first
+- `excludePatterns` (array, optional): Glob patterns to exclude (e.g., `['*.log', 'temp*']`)
+
+**Output:** Directory listing in specified format with metadata
+
+##### move_file
+
+Relocate or rename files and directories
+
+**Input:**
+
+- `source` (string): Source path
+- `destination` (string): Destination path
+
+**Output:** Success confirmation
+
+##### file_operations
+
+Bulk file operations (move, copy, rename)
+
+**Input:**
+
+- `operation` (string): Operation type
+  - `move` - Relocate files
+  - `copy` - Duplicate files
+  - `rename` - Rename files
+- `files` (array): List of source-destination pairs
+- `onConflict` (string, optional): Conflict resolution
+  - `skip` - Skip existing files
+  - `overwrite` - Replace existing files
+  - `error` - Fail on conflicts (default)
+
+**Output:** Status for each operation. Maximum 100 files per operation
+
+##### delete_files
+
+Delete single or multiple files and directories
+
+**Input:**
+
+- `paths` (array): List of paths to delete
+- `recursive` (boolean, optional): Enable recursive deletion
+- `force` (boolean, optional): Force delete read-only files
+
+**Output:** Status for each deletion. Non-recursive by default for safety
+
+##### get_file_info
+
+Retrieve file and directory metadata
+
+**Input:**
+
+- `path` (string): File or directory path
+
+**Output:** Size, timestamps, permissions, and type information
+
+##### register_directory
+
+Enable runtime access to new directories
+
+**Input:**
+
+- `path` (string): Directory path to register
+
+**Output:** Success confirmation. Directory becomes accessible for operations
+
+##### list_allowed_directories
+
+Display currently accessible directory paths
+
+**Input:** None
+
+**Output:** List of all allowed directories
+
+#### Search Operations
+
+##### glob_files
+
+Find files using glob pattern matching
+
+**Input:**
+
+- `path` (string): Directory to search
+- `pattern` (string): Glob pattern (e.g., `**/*.ts`)
+- `excludePatterns` (array, optional): Patterns to exclude
+
+**Output:** List of matching file paths
+
+##### grep_files
+
+Search for text patterns within files
+
+**Input:**
+
+- `pattern` (string): Regex pattern to search
+- `path` (string, optional): Directory to search
+- `-i` (boolean, optional): Case insensitive
+- `-A/-B/-C` (number, optional): Context lines before/after matches
+- `type` (string, optional): File type filter (js, py, ts, etc.)
+- `output_mode` (string, optional): Output format
+  - `content` - Matching lines with line numbers (default)
+  - `files_with_matches` - File paths only
+  - `count` - Match counts per file
+- `head_limit` (number, optional): Limit results
+
+**Output:** Matching lines with context, file paths, or match counts
+
+#### Shell Operations
+
+##### execute_shell
+
+Execute shell commands with security controls
+
+**Input:**
+
+- `command` (string): Shell command to execute
+- `description` (string, optional): Command purpose
+- `workdir` (string, optional): Working directory
+- `timeout` (number, optional): Timeout in milliseconds (default: 30000)
+
+**Output:** Exit code, stdout, stderr, and execution metadata
+
+---
+
+For detailed usage examples, see [Tool Usage Guide](docs/TOOL_USAGE_GUIDE.md)
 
 ### Supported File Types
 
@@ -355,228 +560,6 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 - Provides detailed diff output with statistics
 - Optional preview mode (`dryRun: true`)
 - Preserves indentation and line endings
-
-### Search Tool Usage
-
-#### Glob Pattern Search (`glob_files`)
-
-Use `glob_files` to find files and directories by name patterns:
-
-```json
-{
-  "pattern": "**/*.ts",
-  "path": "/path/to/project"
-}
-```
-
-**Common patterns:**
-
-- `*.js` - All JavaScript files in current directory
-- `**/*.test.js` - All test files in all subdirectories
-- `src/**/*.{ts,tsx}` - All TypeScript files in src directory
-
-**With exclusions:**
-
-```json
-{
-  "pattern": "**/*.js",
-  "path": "/path/to/project",
-  "excludePatterns": ["node_modules/**", "dist/**"]
-}
-```
-
-#### Text Content Search (`grep_files`)
-
-Use `grep_files` to search for text patterns within files:
-
-**Basic search:**
-
-```json
-{
-  "pattern": "TODO"
-}
-```
-
-**Case-insensitive search:**
-
-```json
-{
-  "pattern": "error",
-  "-i": true
-}
-```
-
-**Search with context lines:**
-
-```json
-{
-  "pattern": "function.*test",
-  "-C": 3
-}
-```
-
-**Search only in specific file types:**
-
-```json
-{
-  "pattern": "import.*React",
-  "type": "ts"
-}
-```
-
-**Output modes:**
-
-```json
-{
-  "pattern": "FIXME",
-  "output_mode": "files_with_matches"
-}
-```
-
-**Available output modes:**
-
-- `content` (default) - Shows matching lines with line numbers
-- `files_with_matches` - Lists only file paths containing matches
-- `count` - Shows match counts per file
-
-**Limit results:**
-
-```json
-{
-  "pattern": ".*",
-  "head_limit": 50
-}
-```
-
-#### File Deletion (`delete_files`)
-
-Use `delete_files` to delete single or multiple files and directories:
-
-**Delete single file:**
-
-```json
-{
-  "paths": ["/path/to/file.txt"]
-}
-```
-
-**Delete multiple files:**
-
-```json
-{
-  "paths": ["/path/to/file1.txt", "/path/to/file2.txt", "/path/to/file3.txt"]
-}
-```
-
-**Delete empty directory:**
-
-```json
-{
-  "paths": ["/path/to/empty-directory"]
-}
-```
-
-**Delete directory recursively:**
-
-```json
-{
-  "paths": ["/path/to/directory"],
-  "recursive": true
-}
-```
-
-**Force delete read-only files:**
-
-```json
-{
-  "paths": ["/path/to/readonly-file.txt"],
-  "force": true
-}
-```
-
-**Safety features:**
-
-- Non-recursive by default (prevents accidental deletion of directory trees)
-- All paths validated before any deletions occur
-- Concurrent processing for performance
-- Maximum 100 paths per operation
-- Clear success/failure reporting for each path
-
-#### Shell Command Execution (`execute_shell`)
-
-Execute shell commands on the host system with comprehensive security controls.
-
-**Parameters:**
-
-```json
-{
-  "command": "npm install",
-  "description": "Install project dependencies",
-  "workdir": "/path/to/project",
-  "timeout": 30000,
-  "requiresApproval": false
-}
-```
-
-- **command** (required): Shell command to execute
-- **description** (optional): Brief description of command purpose
-- **workdir** (optional): Working directory (must be within allowed directories)
-- **timeout** (optional): Timeout in milliseconds (default: 30000)
-- **requiresApproval** (optional): Flag for dangerous operations (default: false)
-
-**Platform Behavior:**
-
-- **Windows**: Commands executed via `powershell.exe -NoProfile -NonInteractive -Command <command>`
-- **Unix/Mac**: Commands executed via `bash -c '<command>'`
-
-**Security:**
-
-- Command substitution patterns (`$()`, backticks, `<()`, `>()`) are blocked
-- Dangerous commands require approval (rm -rf, sudo, format, kill -9, etc.)
-- Working directory must be within allowed directories
-- Configurable command approval system via CLI or .env file
-
-**Configuration:**
-
-Commands can be pre-approved via:
-
-1. **CLI argument** (highest priority):
-
-   ```json
-   {
-     "args": ["--approved-commands", "npm,node,git,ls,pwd,echo"]
-   }
-   ```
-
-2. **.env file** (fallback):
-   ```env
-   APPROVED_COMMANDS=npm,node,git,ls,pwd,echo
-   ```
-
-**Recommended Approved Commands:**
-
-- **Safe (read-only)**: `ls,pwd,cat,echo,head,tail,grep,find,which,type,file,stat`
-- **Development**: `npm,node,git,python,pip,cargo,go,make,java,mvn`
-- **System** (use with caution): `sudo,apt,yum,brew,systemctl`
-
-**Example Result:**
-
-```
-Shell Command Execution Result:
-================================
-
-Command: npm install
-Description: Install project dependencies
-Working Directory: /path/to/project
-Exit Code: 0
-Signal: (none)
-
---- Standard Output ---
-added 245 packages in 5.2s
-
---- Standard Error ---
-(empty)
-```
 
 ### Development Setup
 

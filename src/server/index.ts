@@ -449,8 +449,8 @@ const TOOL_REGISTRY = {
     getWriteTools().find((t) => t.name === "write_multiple_files"),
 
   // Filesystem tools
-  create_directory: () =>
-    getFileSystemTools().find((t) => t.name === "create_directory"),
+  make_directory: () =>
+    getFileSystemTools().find((t) => t.name === "make_directory"),
   list_directory: () =>
     getFileSystemTools().find((t) => t.name === "list_directory"),
   move_file: () => getFileSystemTools().find((t) => t.name === "move_file"),
@@ -483,7 +483,7 @@ const TOOL_CATEGORIES = {
   ],
   write: ["write_file", "edit_file", "write_multiple_files"],
   filesystem: [
-    "create_directory",
+    "make_directory",
     "list_directory",
     "move_file",
     "file_operations",
@@ -502,7 +502,7 @@ const TOOL_CATEGORIES = {
     "write_file",
     "edit_file",
     "write_multiple_files",
-    "create_directory",
+    "make_directory",
     "list_directory",
     "move_file",
     "file_operations",
@@ -607,7 +607,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // Filesystem tools
-      case "create_directory":
+      case "make_directory":
       case "list_directory":
       case "move_file":
       case "file_operations":
