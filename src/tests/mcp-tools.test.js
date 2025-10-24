@@ -74,10 +74,10 @@ async function testAllTools() {
     });
     console.log("✅ File created:", createFileResult.content[0].text);
 
-    // 5. Read the file (text)
-    console.log("\n📖 5. Reading text file...");
+    // 5. Read the file
+    console.log("\n📖 5. Reading file...");
     const readTextResult = await client.callTool({
-      name: "read_text_file",
+      name: "read_file",
       arguments: { path: testFile },
     });
     console.log(
@@ -88,16 +88,16 @@ async function testAllTools() {
     // 6. Read first 2 lines
     console.log("\n📖 6. Reading first 2 lines...");
     const readHeadResult = await client.callTool({
-      name: "read_text_file",
-      arguments: { path: testFile, head: 2 },
+      name: "read_file",
+      arguments: { path: testFile, mode: "head", lines: 2 },
     });
     console.log("✅ First 2 lines:", readHeadResult.content[0].text);
 
     // 7. Read last line
     console.log("\n📖 7. Reading last line...");
     const readTailResult = await client.callTool({
-      name: "read_text_file",
-      arguments: { path: testFile, tail: 1 },
+      name: "read_file",
+      arguments: { path: testFile, mode: "tail", lines: 1 },
     });
     console.log("✅ Last line:", readTailResult.content[0].text);
 

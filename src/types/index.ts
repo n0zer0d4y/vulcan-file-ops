@@ -137,8 +137,12 @@ export const ReadFileArgsSchema = z
     }
   );
 
-export const ReadMediaFileArgsSchema = z.object({
-  path: z.string(),
+export const AttachImageArgsSchema = z.object({
+  path: z
+    .union([z.string(), z.array(z.string())])
+    .describe(
+      "Path(s) to image file(s) to attach for AI vision analysis. Can be a single path string or an array of paths to attach multiple images at once."
+    ),
 });
 
 // Individual file read request schema (reuses ReadFileArgs structure)
@@ -498,7 +502,7 @@ export const ShellCommandArgsSchema = z.object({
 
 // Type exports
 export type ReadFileArgs = z.infer<typeof ReadFileArgsSchema>;
-export type ReadMediaFileArgs = z.infer<typeof ReadMediaFileArgsSchema>;
+export type AttachImageArgs = z.infer<typeof AttachImageArgsSchema>;
 export type ReadFileRequest = z.infer<typeof ReadFileRequestSchema>;
 export type ReadMultipleFilesArgs = z.infer<typeof ReadMultipleFilesArgsSchema>;
 export type WriteFileArgs = z.infer<typeof WriteFileArgsSchema>;

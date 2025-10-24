@@ -286,15 +286,15 @@ Read file contents with flexible modes (full, head, tail, range)
 
 **Output:** File contents as text. Supports text files and documents (PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS)
 
-##### read_media_file
+##### attach_image
 
-Read image and audio files
+Attach images for AI vision analysis
 
 **Input:**
 
-- `path` (string): File path
+- `path` (string | string[]): Path to image file, or array of paths to attach multiple images at once
 
-**Output:** Base64-encoded data with MIME type. Supports images (PNG, JPG, GIF, WebP, BMP, SVG) and audio (MP3, WAV, OGG, FLAC)
+**Output:** Image content in MCP format for vision model processing. Supports PNG, JPEG, GIF, WebP, BMP, SVG
 
 ##### read_multiple_files
 
@@ -530,17 +530,43 @@ For detailed usage examples, see [Tool Usage Guide](docs/TOOL_USAGE_GUIDE.md)
 - Plain text fallback for PDF/DOCX when HTML is not detected
 - Cannot write binary files (no base64-to-binary conversion available)
 
-#### Binary File Operations
+#### Image File Operations
 
-**Read Media Tool** (`read_media_file`):
+**Attach Image Tool** (`attach_image`):
 
-- Returns base64-encoded data with MIME type detection
-- **Supported image formats**: PNG, JPG/JPEG, GIF, WebP, BMP, SVG
-- **Supported audio formats**: MP3, WAV, OGG, FLAC
-- Falls back to `application/octet-stream` for other binary files
-- This is the only tool that properly handles binary content
+- Attaches images for AI vision analysis (requires vision-capable MCP client)
+- **Supported formats**: PNG, JPEG, GIF, WebP, BMP, SVG
+- **Batch support**: Can attach single image or multiple images in one call
+- Images are presented to the AI as if uploaded directly by the user
+- Enables visual analysis: reading text in images, analyzing diagrams, describing scenes
+- **Use cases**:
+  - Analyze screenshots for debugging
+  - Extract text from images (OCR-like)
+  - Compare UI mockups (attach multiple screenshots at once)
+  - Describe charts and graphs
+  - Identify objects in photos
+- Returns images in MCP standard format for client vision processing
+- Only works within allowed directories
 
-**Note**: There is currently no write capability for binary files. You can read images and audio as base64 but cannot write them back through the filesystem tools.
+**Example Usage:**
+
+```
+# Single image
+User: "Attach /screenshots/error.png and tell me what's wrong"
+AI: [Analyzes image] "This screenshot shows a TypeError on line 42..."
+
+# Multiple images at once
+User: "Attach both /screenshots/before.png and /screenshots/after.png and compare them"
+AI: [Analyzes both images] "The 'before' screenshot shows..., while the 'after' screenshot..."
+```
+
+**Client Compatibility:**
+
+- ✅ Works with: Claude Desktop, Claude.ai, Cursor, ChatGPT Desktop
+- ✅ Requires: MCP client with vision capabilities
+- ❌ Non-vision clients will receive an error
+
+**Note**: There is currently no write capability for binary files. You can attach images for vision analysis but cannot create or modify image files through the filesystem tools.
 
 #### File System Operations
 
