@@ -124,10 +124,23 @@ async function testAllTools() {
     console.log("\n📁 10. Creating subdirectory...");
     const subDir = path.join(testDir, "test-subdir");
     const createDirResult = await client.callTool({
-      name: "create_directory",
-      arguments: { path: subDir },
+      name: "make_directory",
+      arguments: { paths: subDir },
     });
     console.log("✅ Directory created:", createDirResult.content[0].text);
+
+    // 10b. Create multiple directories at once (new batch feature)
+    console.log("\n📁 10b. Creating multiple directories (batch)...");
+    const batchDirs = [
+      path.join(testDir, "batch-test-1"),
+      path.join(testDir, "batch-test-2"),
+      path.join(testDir, "nested", "batch-test-3"),
+    ];
+    const batchResult = await client.callTool({
+      name: "make_directory",
+      arguments: { paths: batchDirs },
+    });
+    console.log("✅ Batch directories created:", batchResult.content[0].text);
 
     // 11. Move file to subdirectory
     console.log("\n📦 11. Moving file to subdirectory...");

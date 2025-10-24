@@ -5,7 +5,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 import { expandHome, normalizePath } from "../utils/path-utils.js";
 import {
-  CreateDirectoryArgsSchema,
+  MakeDirectoryArgsSchema,
   ListDirectoryArgsSchema,
   ListDirectoryWithSizesArgsSchema,
   DirectoryTreeArgsSchema,
@@ -14,7 +14,7 @@ import {
   RegisterDirectoryArgsSchema,
   FileOperationsArgsSchema,
   DeleteFilesArgsSchema,
-  type CreateDirectoryArgs,
+  type MakeDirectoryArgs,
   type ListDirectoryArgs,
   type ListDirectoryWithSizesArgs,
   type DirectoryTreeArgs,
@@ -69,14 +69,12 @@ export function getFileSystemTools() {
 
   return [
     {
-      name: "create_directory",
+      name: "make_directory",
       description:
-        "Create new directories or verify directory existence. " +
-        "Supports creating deeply nested directory structures in a single call with recursive parent creation. " +
-        "Operates idempotently - existing directories are simply confirmed without errors. " +
-        "Ideal for initializing project scaffolding or guaranteeing path availability. " +
+        "Create single or multiple directories with recursive parent creation " +
+        "(like Unix 'mkdir -p'). Idempotent - won't error if directories exist. " +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(CreateDirectoryArgsSchema) as ToolInput,
+      inputSchema: zodToJsonSchema(MakeDirectoryArgsSchema) as ToolInput,
     },
     {
       name: "list_directory",
@@ -578,20 +576,59 @@ async function listDirectory(
 
 export async function handleFileSystemTool(name: string, args: any) {
   switch (name) {
-    case "create_directory": {
-      const parsed = CreateDirectoryArgsSchema.safeParse(args);
+    case "make_directory": {
+      const parsed = MakeDirectoryArgsSchema.safeParse(args);
       if (!parsed.success) {
         throw new Error(
-          `Invalid arguments for create_directory: ${parsed.error}`
+          `Invalid arguments for make_directory: ${parsed.error}`
         );
       }
-      const validPath = await validatePath(parsed.data.path);
-      await fs.mkdir(validPath, { recursive: true });
+
+      // Normalize to array (single path or multiple paths)
+      const pathsToCreate = Array.isArray(parsed.data.paths)
+        ? parsed.data.paths
+        : [parsed.data.paths];
+
+      // Validate all paths first (atomic - fail before any creation)
+      const allowedDirs = getAllowedDirectories();
+      const validatedPaths = pathsToCreate.map((dirPath) => {
+        const normalized = normalizePath(expandHome(dirPath));
+
+        const isAllowed = allowedDirs.some((allowedDir) => {
+          const normalizedAllowed = normalizePath(allowedDir);
+          return normalized.startsWith(normalizedAllowed);
+        });
+
+        if (!isAllowed) {
+          throw new Error(
+            `Access denied: Path ${dirPath} is not within allowed directories`
+          );
+        }
+
+        return { original: dirPath, normalized };
+      });
+
+      // All validated - now create them concurrently
+      const results = await Promise.all(
+        validatedPaths.map(async ({ original, normalized }) => {
+          await fs.mkdir(normalized, { recursive: true });
+          return original;
+        })
+      );
+
+      // Format response based on single vs batch
+      const message =
+        results.length === 1
+          ? `Successfully created directory ${results[0]}`
+          : `Successfully created ${results.length} directories:\n${results
+              .map((p) => `  - ${p}`)
+              .join("\n")}`;
+
       return {
         content: [
           {
             type: "text",
-            text: `Successfully created directory ${parsed.data.path}`,
+            text: message,
           },
         ],
       };

@@ -49,7 +49,10 @@ describe("Argument Parser Enhancement", () => {
 
         // Also support comma-separated format for backward compatibility
         const parsed = folders.flatMap((f) =>
-          f.split(",").map((dir) => dir.trim()).filter((dir) => dir.length > 0)
+          f
+            .split(",")
+            .map((dir) => dir.trim())
+            .filter((dir) => dir.length > 0)
         );
         approvedFoldersFromArgs.push(...parsed);
 
@@ -72,7 +75,10 @@ describe("Argument Parser Enhancement", () => {
 
         // Also support comma-separated format for backward compatibility
         const parsed = folders.flatMap((f) =>
-          f.split(",").map((dir) => dir.trim()).filter((dir) => dir.length > 0)
+          f
+            .split(",")
+            .map((dir) => dir.trim())
+            .filter((dir) => dir.length > 0)
         );
         ignoredFolders.push(...parsed);
 
@@ -95,7 +101,10 @@ describe("Argument Parser Enhancement", () => {
 
         // Also support comma-separated format for backward compatibility
         const parsed = categories.flatMap((c) =>
-          c.split(",").map((cat) => cat.trim()).filter((cat) => cat.length > 0)
+          c
+            .split(",")
+            .map((cat) => cat.trim())
+            .filter((cat) => cat.length > 0)
         );
         enabledToolCategories.push(...parsed);
 
@@ -118,7 +127,10 @@ describe("Argument Parser Enhancement", () => {
 
         // Also support comma-separated format for backward compatibility
         const parsed = tools.flatMap((t) =>
-          t.split(",").map((tool) => tool.trim()).filter((tool) => tool.length > 0)
+          t
+            .split(",")
+            .map((tool) => tool.trim())
+            .filter((tool) => tool.length > 0)
         );
         enabledTools.push(...parsed);
 
@@ -141,7 +153,10 @@ describe("Argument Parser Enhancement", () => {
 
         // Also support comma-separated format for backward compatibility
         const parsed = commands.flatMap((c) =>
-          c.split(",").map((cmd) => cmd.trim()).filter((cmd) => cmd.length > 0)
+          c
+            .split(",")
+            .map((cmd) => cmd.trim())
+            .filter((cmd) => cmd.length > 0)
         );
         approvedCommandsFromArgs.push(...parsed);
 
@@ -255,12 +270,7 @@ describe("Argument Parser Enhancement", () => {
     });
 
     test("should parse array elements", () => {
-      const args = [
-        "--enabled-tool-categories",
-        "read",
-        "write",
-        "filesystem",
-      ];
+      const args = ["--enabled-tool-categories", "read", "write", "filesystem"];
       const result = parseArguments(args);
       expect(result.enabledToolCategories).toEqual([
         "read",
@@ -373,7 +383,7 @@ describe("Argument Parser Enhancement", () => {
         "write_file",
         "write_multiple_files",
         "edit_file",
-        "create_directory",
+        "make_directory",
         "list_directory",
         "directory_tree",
         "file_operations",
@@ -396,4 +406,3 @@ describe("Argument Parser Enhancement", () => {
     });
   });
 });
-
