@@ -436,9 +436,7 @@ server.setRequestHandler(PingRequestSchema, async () => {
 const TOOL_REGISTRY = {
   // Read tools
   read_file: () => getReadTools().find((t) => t.name === "read_file"),
-  read_text_file: () => getReadTools().find((t) => t.name === "read_text_file"),
-  read_media_file: () =>
-    getReadTools().find((t) => t.name === "read_media_file"),
+  attach_image: () => getReadTools().find((t) => t.name === "attach_image"),
   read_multiple_files: () =>
     getReadTools().find((t) => t.name === "read_multiple_files"),
 
@@ -475,12 +473,7 @@ const TOOL_REGISTRY = {
 
 // Tool categories for easier configuration
 const TOOL_CATEGORIES = {
-  read: [
-    "read_file",
-    "read_text_file",
-    "read_media_file",
-    "read_multiple_files",
-  ],
+  read: ["read_file", "attach_image", "read_multiple_files"],
   write: ["write_file", "edit_file", "write_multiple_files"],
   filesystem: [
     "make_directory",
@@ -592,7 +585,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       // Read tools
       case "read_file":
-      case "read_media_file":
+      case "attach_image":
       case "read_multiple_files": {
         const { handleReadTool } = await import("../tools/read-tools.js");
         return await handleReadTool(name, args);

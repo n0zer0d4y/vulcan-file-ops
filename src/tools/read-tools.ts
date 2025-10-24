@@ -4,11 +4,11 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
   ReadFileArgsSchema,
-  ReadMediaFileArgsSchema,
+  AttachImageArgsSchema,
   ReadMultipleFilesArgsSchema,
   ReadFileRequestSchema,
   type ReadFileArgs,
-  type ReadMediaFileArgs,
+  type AttachImageArgs,
   type ReadMultipleFilesArgs,
   type ReadFileRequest,
 } from "../types/index.js";
@@ -57,13 +57,16 @@ export function getReadTools() {
       inputSchema: zodToJsonSchema(ReadFileArgsSchema) as ToolInput,
     },
     {
-      name: "read_media_file",
+      name: "attach_image",
       description:
-        "Process image and audio files by converting them to base64-encoded format. " +
-        "Returns the encoded data along with the detected MIME type for proper content handling. " +
-        "Supports common image formats (PNG, JPEG, GIF, WebP, BMP, SVG) and audio formats (MP3, WAV, OGG, FLAC). " +
+        "Attach an image file for AI vision analysis. The image will be presented " +
+        "to the AI model as if uploaded directly by the user, enabling the AI to see " +
+        "and describe visual content, read text in images, analyze diagrams, etc. " +
+        "Supports attaching a single image or multiple images at once. " +
+        "Supports PNG, JPEG, GIF, WebP, BMP, and SVG formats. " +
+        "Note: This requires the MCP client to support vision capabilities. " +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(ReadMediaFileArgsSchema) as ToolInput,
+      inputSchema: zodToJsonSchema(AttachImageArgsSchema) as ToolInput,
     },
     {
       name: "read_multiple_files",
@@ -153,15 +156,18 @@ export async function handleReadTool(name: string, args: any) {
       }
     }
 
-    case "read_media_file": {
-      const parsed = ReadMediaFileArgsSchema.safeParse(args);
+    case "attach_image": {
+      const parsed = AttachImageArgsSchema.safeParse(args);
       if (!parsed.success) {
-        throw new Error(
-          `Invalid arguments for read_media_file: ${parsed.error}`
-        );
+        throw new Error(`Invalid arguments for attach_image: ${parsed.error}`);
       }
-      const validPath = await validatePath(parsed.data.path);
-      const extension = path.extname(validPath).toLowerCase();
+
+      // Support both single path and array of paths
+      const paths = Array.isArray(parsed.data.path)
+        ? parsed.data.path
+        : [parsed.data.path];
+
+      // Supported image formats only (no audio)
       const mimeTypes: Record<string, string> = {
         ".png": "image/png",
         ".jpg": "image/jpeg",
@@ -170,20 +176,35 @@ export async function handleReadTool(name: string, args: any) {
         ".webp": "image/webp",
         ".bmp": "image/bmp",
         ".svg": "image/svg+xml",
-        ".mp3": "audio/mpeg",
-        ".wav": "audio/wav",
-        ".ogg": "audio/ogg",
-        ".flac": "audio/flac",
       };
-      const mimeType = mimeTypes[extension] || "application/octet-stream";
-      const data = await readFileAsBase64Stream(validPath);
-      const type = mimeType.startsWith("image/")
-        ? "image"
-        : mimeType.startsWith("audio/")
-        ? "audio"
-        : "blob";
+
+      // Process all images
+      const imageContents = await Promise.all(
+        paths.map(async (imagePath) => {
+          const validPath = await validatePath(imagePath);
+          const extension = path.extname(validPath).toLowerCase();
+          const mimeType = mimeTypes[extension];
+
+          if (!mimeType) {
+            throw new Error(
+              `Unsupported image format: ${extension}. ` +
+                `Supported formats: PNG, JPEG, GIF, WebP, BMP, SVG`
+            );
+          }
+
+          const data = await readFileAsBase64Stream(validPath);
+
+          return {
+            type: "image" as const,
+            data: data,
+            mimeType: mimeType,
+          };
+        })
+      );
+
+      // Return all images in MCP-compliant format
       return {
-        content: [{ type, data, mimeType }],
+        content: imageContents,
       };
     }
 

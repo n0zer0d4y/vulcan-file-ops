@@ -191,6 +191,8 @@ describe("write_file with PDF", () => {
 describe("write_file with DOCX", () => {
   beforeAll(async () => {
     await setupTestEnvironment();
+    // Ensure OUTPUT_DIR exists
+    await fs.mkdir(OUTPUT_DIR, { recursive: true });
   });
 
   afterAll(async () => {
@@ -260,6 +262,9 @@ describe("write_file with DOCX", () => {
   }, 15000);
 
   test("creates DOCX from HTML with table", async () => {
+    // Ensure output directory exists for this test
+    await fs.mkdir(OUTPUT_DIR, { recursive: true });
+
     const htmlContent = `
       <html>
         <body>
@@ -289,6 +294,9 @@ describe("write_file with DOCX", () => {
   }, 15000);
 
   test("preserves line breaks as paragraphs in DOCX", async () => {
+    // Ensure output directory exists for this test
+    await fs.mkdir(OUTPUT_DIR, { recursive: true });
+
     const content = "Paragraph 1\nParagraph 2\nParagraph 3";
     const docxPath = path.join(OUTPUT_DIR, "paragraphs.docx");
 
@@ -302,6 +310,9 @@ describe("write_file with DOCX", () => {
   });
 
   test("creates DOCX with long content", async () => {
+    // Ensure output directory exists for this test
+    await fs.mkdir(OUTPUT_DIR, { recursive: true });
+
     const longContent = Array(50)
       .fill(
         "This is a paragraph of text that will be written to the DOCX document."
