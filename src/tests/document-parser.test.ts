@@ -19,17 +19,27 @@ const FIXTURES_DIR = path.join(TEST_WORKSPACE, "fixtures");
 
 // Helper to create test fixtures
 async function createTestFixtures() {
-  await fs.mkdir(FIXTURES_DIR, { recursive: true });
+  try {
+    // Ensure the test workspace directory exists
+    await fs.mkdir(TEST_WORKSPACE, { recursive: true });
+    await fs.mkdir(FIXTURES_DIR, { recursive: true });
 
-  // Create oversized file (>50MB)
-  const largeContent = Buffer.alloc(51 * 1024 * 1024, "x"); // 51MB
-  await fs.writeFile(path.join(FIXTURES_DIR, "huge-file.pdf"), largeContent);
+    // Create oversized file (>50MB)
+    const largeContent = Buffer.alloc(51 * 1024 * 1024, "x"); // 51MB
+    await fs.writeFile(path.join(FIXTURES_DIR, "huge-file.pdf"), largeContent);
 
-  // Create legacy .doc placeholder
-  await fs.writeFile(path.join(FIXTURES_DIR, "legacy.doc"), "placeholder");
+    // Create legacy .doc placeholder
+    await fs.writeFile(path.join(FIXTURES_DIR, "legacy.doc"), "placeholder");
 
-  // Create regular text file
-  await fs.writeFile(path.join(FIXTURES_DIR, "text.txt"), "Plain text content");
+    // Create regular text file
+    await fs.writeFile(
+      path.join(FIXTURES_DIR, "text.txt"),
+      "Plain text content"
+    );
+  } catch (error) {
+    console.error("Failed to create test fixtures:", error);
+    throw error;
+  }
 }
 
 async function cleanupTestFixtures() {
