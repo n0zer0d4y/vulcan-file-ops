@@ -1,0 +1,35 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+coverage
+
+# Development files
+.git
+.gitignore
+*.md
+docs/
+test-workspace
+
+# IDE
+.vscode
+.cursor
+*.code-workspace
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+jest.config.cjs
+src/tests
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
