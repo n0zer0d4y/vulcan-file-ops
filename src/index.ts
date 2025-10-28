@@ -1,2 +1,2 @@
-// Main entry point for Filesystem of a Down MCP Server
+// Main entry point for Vulcan File Ops MCP Server
 export { runServer } from "./server/index.js";

@@ -44,7 +44,7 @@ async function writeFileBasedOnExtension(
       // Use HTML-to-PDF converter for rich formatting
       const pdfBuffer = await convertHTMLToPDF(content, {
         title: fileTitle,
-        author: "filesystem-of-a-down",
+        author: "vulcan-file-ops",
       });
       await fs.writeFile(validPath, pdfBuffer);
     } else {
@@ -58,7 +58,7 @@ async function writeFileBasedOnExtension(
       // Use HTML-to-DOCX converter for rich formatting
       const docxBuffer = await convertHTMLToDOCX(content, {
         title: fileTitle,
-        author: "filesystem-of-a-down",
+        author: "vulcan-file-ops",
       });
       await fs.writeFile(validPath, docxBuffer);
     } else {

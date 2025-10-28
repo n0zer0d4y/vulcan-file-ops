@@ -29,7 +29,7 @@ export async function createSimpleDOCX(
 
   // Create document with metadata
   const doc = new Document({
-    creator: options.creator || "filesystem-of-a-down",
+    creator: options.creator || "vulcan-file-ops",
     title: options.title,
     subject: options.subject,
     keywords: options.keywords?.join(", "),
@@ -45,4 +45,3 @@ export async function createSimpleDOCX(
   // Convert to buffer
   return Buffer.from(await Packer.toBuffer(doc));
 }
-

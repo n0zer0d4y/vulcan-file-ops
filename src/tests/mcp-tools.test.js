@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 
 async function testAllTools() {
-  console.log("🧪 Testing ALL Filesystem of a Down MCP Tools");
+  console.log("🧪 Testing ALL Vulcan File Ops MCP Tools");
   console.log("=".repeat(50));
 
   // Create MCP client transport
@@ -216,7 +216,7 @@ async function testAllTools() {
     );
 
     console.log("\n🎉 ALL TOOLS TESTED SUCCESSFULLY!");
-    console.log("✅ Filesystem of a Down MCP Server is working perfectly!");
+    console.log("✅ Vulcan File Ops MCP Server is working perfectly!");
     console.log("\n📁 Test directory:", testDir);
     console.log("🧹 You can manually clean up the test files if needed.");
   } catch (error) {

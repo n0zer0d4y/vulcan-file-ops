@@ -237,10 +237,10 @@ export async function htmlToPDF(
     content: converted,
     info: {
       title: options.title || "Document",
-      author: options.author || "filesystem-of-a-down",
+      author: options.author || "vulcan-file-ops",
       subject: options.subject || "",
       keywords: options.keywords?.join(", ") || "",
-      creator: "filesystem-of-a-down MCP Server",
+      creator: "Vulcan File Ops MCP Server",
       producer: "pdfmake + html-to-pdfmake",
     },
     // Default page settings
@@ -299,7 +299,7 @@ export async function htmlToDOCX(
   // DOCX generation options
   const docxOptions = {
     title: options.title || "Document",
-    creator: options.author || "filesystem-of-a-down",
+    creator: options.author || "vulcan-file-ops",
     subject: options.subject || "",
     keywords: options.keywords || [],
     description: options.subject || "",

@@ -392,7 +392,7 @@ function generateServerDescription(): string {
 // Server setup
 const server = new Server(
   {
-    name: "filesystem-of-a-down",
+    name: "vulcan-file-ops",
     version: "1.0.0",
   },
   {
@@ -420,7 +420,7 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => {
       prompts: {},
     },
     serverInfo: {
-      name: "filesystem-of-a-down",
+      name: "vulcan-file-ops",
       version: "1.0.0",
     },
     instructions: generateServerDescription(),
