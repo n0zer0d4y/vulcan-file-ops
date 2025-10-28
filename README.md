@@ -1,4 +1,4 @@
-﻿# Filesystem of a Down MCP Server
+﻿# Vulcan File Ops MCP Server
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
 [![MCP Server](https://badge.mcpx.dev?type=server "MCP Server")](https://modelcontextprotocol.io)
@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A configurable Model Context Protocol server for secure filesystem operations that absolutely **rocks**. Enables AI assistants to dynamically access and manage file system resources with runtime directory registration and selective tool activation.
+
+**Transform your desktop AI assistants into powerful development partners.** Vulcan File Ops bridges the gap between conversational AI (Claude Desktop, ChatGPT Desktop, etc.) and your local filesystem, unlocking the same file manipulation capabilities found in AI-powered IDEs like Cursor and Cline. Write code, refactor projects, manage documentation, and perform complex file operations—matching the power of dedicated AI coding assistants. With enterprise-grade security controls, dynamic directory registration, and intelligent tool filtering, you maintain complete control while your AI assistant handles the heavy lifting.
 
 ## Table of Contents
 
@@ -29,10 +31,15 @@ The [Model Context Protocol](https://modelcontextprotocol.io) (MCP) enables AI a
 This enhanced implementation provides:
 
 - **Dynamic Directory Access**: Runtime directory registration through conversational commands
+- **Document Support**: Read/write PDF, DOCX, PPTX, XLSX, ODT with HTML-to-document conversion
+- **Batch Operations**: Read, write, copy, move, or rename multiple files concurrently
+- **Advanced File Editing**: Pattern-based modifications with flexible matching and diff preview
+- **Flexible Reading Modes**: Full file, head/tail, or arbitrary line ranges
+- **Image Vision Support**: Attach images for AI analysis and description
 - **Directory Filtering**: Exclude unwanted folders (node_modules, dist, .git) from listings
 - **Selective Tool Activation**: Enable only specific tools or tool categories
 - **High Performance**: Optimized search algorithms with smart recursion detection
-- **Security Controls**: Path validation and access restrictions
+- **Security Controls**: Path validation, access restrictions, and shell command approval
 - **Local Control**: Full local installation with no external dependencies
 
 ### Directory Access Model
@@ -50,13 +57,13 @@ This server supports multiple flexible approaches to directory access:
 This server requires Node.js and can be installed locally for full control.
 
 ```bash
-npm install -g filesystem-of-a-down
+npm install -g vulcan-file-ops
 ```
 
 Or install in a specific project:
 
 ```bash
-npm install filesystem-of-a-down
+npm install vulcan-file-ops
 ```
 
 ### Dependencies
@@ -72,8 +79,8 @@ Add to your MCP client configuration (e.g., `claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "filesystem-of-a-down": {
-      "command": "filesystem-of-a-down"
+    "vulcan-file-ops": {
+      "command": "vulcan-file-ops"
     }
   }
 }
@@ -90,8 +97,8 @@ Pre-configure specific directories for immediate access on server start:
 ```json
 {
   "mcpServers": {
-    "filesystem-of-a-down": {
-      "command": "filesystem-of-a-down",
+    "vulcan-file-ops": {
+      "command": "vulcan-file-ops",
       "args": [
         "--approved-folders",
         "/Users/username/projects,/Users/username/documents"
@@ -106,8 +113,8 @@ Pre-configure specific directories for immediate access on server start:
 ```json
 {
   "mcpServers": {
-    "filesystem-of-a-down": {
-      "command": "filesystem-of-a-down",
+    "vulcan-file-ops": {
+      "command": "vulcan-file-ops",
       "args": [
         "--approved-folders",
         "C:/Users/username/projects,C:/Users/username/documents"
@@ -164,8 +171,8 @@ Exclude specific folders from directory listings:
 ```json
 {
   "mcpServers": {
-    "filesystem-of-a-down": {
-      "command": "filesystem-of-a-down",
+    "vulcan-file-ops": {
+      "command": "vulcan-file-ops",
       "args": ["--ignored-folders", "node_modules,dist,.git,.next"]
     }
   }
@@ -179,8 +186,8 @@ Enable only specific tool categories:
 ```json
 {
   "mcpServers": {
-    "filesystem-of-a-down": {
-      "command": "filesystem-of-a-down",
+    "vulcan-file-ops": {
+      "command": "vulcan-file-ops",
       "args": ["--enabled-tool-categories", "read,filesystem"]
     }
   }
@@ -192,8 +199,8 @@ Or enable individual tools:
 ```json
 {
   "mcpServers": {
-    "filesystem-of-a-down": {
-      "command": "filesystem-of-a-down",
+    "vulcan-file-ops": {
+      "command": "vulcan-file-ops",
       "args": ["--enabled-tools", "read_file,list_directory,search_files"]
     }
   }
@@ -209,8 +216,8 @@ All configuration options can be combined:
 ```json
 {
   "mcpServers": {
-    "filesystem-of-a-down": {
-      "command": "filesystem-of-a-down",
+    "vulcan-file-ops": {
+      "command": "vulcan-file-ops",
       "args": [
         "--approved-folders",
         "C:/Users/username/projects,C:/Users/username/documents",
@@ -233,8 +240,8 @@ All configuration options can be combined:
 ```json
 {
   "mcpServers": {
-    "filesystem-of-a-down": {
-      "command": "filesystem-of-a-down",
+    "vulcan-file-ops": {
+      "command": "vulcan-file-ops",
       "args": [
         "--approved-folders",
         "/Users/username/projects,/Users/username/documents",
@@ -591,8 +598,8 @@ AI: [Analyzes both images] "The 'before' screenshot shows..., while the 'after' 
 
 ```bash
 # Clone the repository
-git clone https://github.com/n0zer0d4y/filesystem-of-a-down.git
-cd filesystem-of-a-down
+git clone https://github.com/n0zer0d4y/vulcan-file-ops.git
+cd vulcan-file-ops
 
 # Install dependencies
 npm install
