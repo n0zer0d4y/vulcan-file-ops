@@ -49,6 +49,52 @@ function parseArguments() {
   let parsingApprovedFolders = false;
   let parsingApprovedCommands = false;
 
+  // Handle help flag
+  if (args.includes("--help") || args.includes("-h")) {
+    console.error(
+      `Vulcan File Ops MCP Server v${
+        process.env.npm_package_version || "1.0.0"
+      }`
+    );
+    console.error("");
+    console.error("Usage: vulcan-file-ops [options]");
+    console.error("");
+    console.error("Options:");
+    console.error(
+      "  --approved-folders <dirs...>    Pre-configure allowed directories (comma-separated)"
+    );
+    console.error(
+      "  --ignored-folders <dirs...>     Exclude directories from listings (comma-separated)"
+    );
+    console.error(
+      "  --enabled-tool-categories <cats...>  Enable specific tool categories (comma-separated)"
+    );
+    console.error(
+      "  --enabled-tools <tools...>      Enable specific tools (comma-separated)"
+    );
+    console.error(
+      "  --approved-commands <cmds...>   Allow specific shell commands (comma-separated)"
+    );
+    console.error("  --help, -h                     Show this help message");
+    console.error("  --version, -v                  Show version information");
+    console.error("");
+    console.error("Legacy usage (deprecated):");
+    console.error("  vulcan-file-ops <directory1> <directory2> ...");
+    console.error("");
+    console.error(
+      "For MCP configuration, use your client's MCP settings to specify approved folders."
+    );
+    process.exit(0);
+  }
+
+  // Handle version flag
+  if (args.includes("--version") || args.includes("-v")) {
+    console.error(
+      `vulcan-file-ops v${process.env.npm_package_version || "1.0.0"}`
+    );
+    process.exit(0);
+  }
+
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
 
@@ -177,7 +223,7 @@ function parseArguments() {
       continue;
     }
 
-    // If we're not parsing a flag value, treat as directory
+    // If we're not parsing a flag value, this might be an unrecognized argument
     if (
       !parsingIgnoredFolders &&
       !parsingApprovedFolders &&
@@ -185,6 +231,21 @@ function parseArguments() {
       !parsingEnabledTools &&
       !parsingApprovedCommands
     ) {
+      // Check if this looks like an unrecognized flag
+      if (arg.startsWith("-")) {
+        console.error(`Error: Unrecognized option '${arg}'`);
+        console.error("Run with --help for usage information.");
+        process.exit(1);
+      }
+
+      // For backward compatibility, treat non-flag arguments as directories
+      // But log a warning that this usage is deprecated
+      console.error(
+        `Warning: Treating '${arg}' as a directory. This usage is deprecated.`
+      );
+      console.error(
+        "Use --approved-folders instead for better MCP client compatibility."
+      );
       directories.push(arg);
     }
 
@@ -203,13 +264,27 @@ const directoryArgs = parseArguments();
 
 // Async initialization function to be called in runServer()
 async function initializeDirectories() {
-  // Display configuration info
+  // Detect MCP mode: stdin/stdout are NOT TTY (piped) = MCP mode
+  const isMCP = !process.stdin.isTTY && !process.stdout.isTTY || 
+                process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio"));
+
+  // During MCP operation, suppress ALL console output to prevent protocol corruption
+  if (isMCP) {
+    const noop = () => {};
+    console.error = noop;
+    console.log = noop;
+    console.warn = noop;
+    console.info = noop;
+    console.debug = noop;
+  }
+
   if (
-    approvedFoldersFromArgs.length > 0 ||
-    directoryArgs.length > 0 ||
-    ignoredFolders.length > 0 ||
-    enabledToolCategories.length > 0 ||
-    enabledTools.length > 0
+    !isMCP &&
+    (approvedFoldersFromArgs.length > 0 ||
+      directoryArgs.length > 0 ||
+      ignoredFolders.length > 0 ||
+      enabledToolCategories.length > 0 ||
+      enabledTools.length > 0)
   ) {
     console.error("Configuration:");
     if (approvedFoldersFromArgs.length > 0) {
@@ -270,11 +345,14 @@ async function initializeDirectories() {
       })
     );
 
-    console.error(
-      `Initialized with ${allowedDirectories.length} approved ${
-        allowedDirectories.length === 1 ? "directory" : "directories"
-      }`
-    );
+    // Only log initialization if not running under MCP
+    if (!isMCP) {
+      console.error(
+        `Initialized with ${allowedDirectories.length} approved ${
+          allowedDirectories.length === 1 ? "directory" : "directories"
+        }`
+      );
+    }
   }
 
   // Handle legacy positional directory arguments (backward compatibility)
@@ -331,9 +409,11 @@ async function initializeDirectories() {
   // Priority 1: --approved-commands from CLI (supersedes .env)
   if (approvedCommandsFromArgs.length > 0) {
     finalApprovedCommands = approvedCommandsFromArgs;
-    console.error(
-      `  Approved commands (from CLI): ${finalApprovedCommands.join(", ")}`
-    );
+    if (!isMCP) {
+      console.error(
+        `  Approved commands (from CLI): ${finalApprovedCommands.join(", ")}`
+      );
+    }
   } else {
     // Priority 2: Load from .env file
     try {
@@ -344,28 +424,39 @@ async function initializeDirectories() {
         finalApprovedCommands = process.env.APPROVED_COMMANDS.split(",")
           .map((c) => c.trim())
           .filter((c) => c.length > 0);
-        console.error(
-          `  Approved commands (from .env): ${finalApprovedCommands.join(", ")}`
-        );
+        if (!isMCP) {
+          console.error(
+            `  Approved commands (from .env): ${finalApprovedCommands.join(
+              ", "
+            )}`
+          );
+        }
       }
     } catch (error) {
-      console.error(
-        "  Note: Could not load .env file (this is okay if using CLI args)"
-      );
+      if (!isMCP) {
+        console.error(
+          "  Note: Could not load .env file (this is okay if using CLI args)"
+        );
+      }
     }
   }
 
   // Initialize shell tool with approved commands
   if (finalApprovedCommands.length > 0) {
     initializeShellTool(finalApprovedCommands);
-    console.error(
-      `Initialized shell tool with ${finalApprovedCommands.length} approved command(s)`
-    );
+    if (!isMCP) {
+      console.error(
+        `Initialized shell tool with ${finalApprovedCommands.length} approved command(s)`
+      );
+    }
   } else {
     initializeShellTool([]);
-    console.error(
-      "Shell tool initialized with no pre-approved commands (all commands require approval)"
-    );
+    // Only log shell initialization if not running under MCP
+    if (!isMCP) {
+      console.error(
+        "Shell tool initialized with no pre-approved commands (all commands require approval)"
+      );
+    }
   }
 }
 
