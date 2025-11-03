@@ -4,6 +4,7 @@ import { minimatch } from "minimatch";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 import { expandHome, normalizePath } from "../utils/path-utils.js";
+import { isPathWithinAllowedDirectories } from "../utils/path-validation.js";
 import {
   MakeDirectoryArgsSchema,
   ListDirectoryArgsSchema,
@@ -592,14 +593,16 @@ export async function handleFileSystemTool(name: string, args: any) {
       // Validate all paths first (atomic - fail before any creation)
       const allowedDirs = getAllowedDirectories();
       const validatedPaths = pathsToCreate.map((dirPath) => {
-        const normalized = normalizePath(expandHome(dirPath));
+        const expandedPath = expandHome(dirPath);
+        // Resolve to absolute path - required by isPathWithinAllowedDirectories
+        const absolutePath = path.isAbsolute(expandedPath)
+          ? path.resolve(expandedPath)
+          : path.resolve(process.cwd(), expandedPath);
+        const normalized = normalizePath(absolutePath);
 
-        const isAllowed = allowedDirs.some((allowedDir) => {
-          const normalizedAllowed = normalizePath(allowedDir);
-          return normalized.startsWith(normalizedAllowed);
-        });
-
-        if (!isAllowed) {
+        // Use secure path validation function to prevent prefix collision attacks
+        // (CVE-2025-54794 pattern: ensures path separator is required, not just prefix match)
+        if (!isPathWithinAllowedDirectories(normalized, allowedDirs)) {
           throw new Error(
             `Access denied: Path ${dirPath} is not within allowed directories`
           );
