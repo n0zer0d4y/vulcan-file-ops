@@ -7,13 +7,7 @@ import {
   DocumentParseError,
 } from "../utils/document-parser.js";
 
-const SAMPLE_FILES_DIR = path.join(
-  __dirname,
-  "..",
-  "..",
-  "docs",
-  "sample-files"
-);
+const TEST_FIXTURES_DIR = path.join(__dirname, "fixtures");
 const TEST_WORKSPACE = path.join(__dirname, "..", "..", "test-workspace");
 const FIXTURES_DIR = path.join(TEST_WORKSPACE, "fixtures");
 
@@ -99,7 +93,7 @@ describe("Document Parser", () => {
   describe("parseDocument", () => {
     test("parses PDF with pdf2json or pdf-parse fallback", async () => {
       const result = await parseDocument(
-        path.join(SAMPLE_FILES_DIR, "sample.pdf")
+        path.join(TEST_FIXTURES_DIR, "sample.pdf")
       );
 
       expect(result.text).toBeDefined();

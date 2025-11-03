@@ -4,13 +4,7 @@ import path from "path";
 import { handleReadTool } from "../tools/read-tools.js";
 import { setAllowedDirectories, getAllowedDirectories } from "../utils/lib.js";
 
-const SAMPLE_FILES_DIR = path.join(
-  __dirname,
-  "..",
-  "..",
-  "docs",
-  "sample-files"
-);
+const TEST_FIXTURES_DIR = path.join(__dirname, "fixtures");
 const TEST_WORKSPACE = path.join(__dirname, "..", "..", "test-workspace");
 const FIXTURES_DIR = path.join(TEST_WORKSPACE, "fixtures");
 
@@ -25,9 +19,9 @@ async function setupTestEnvironment() {
     "Plain text content\nLine 2\nLine 3"
   );
 
-  // Register test directories (include sample-files and test workspace)
+  // Register test directories (include test fixtures and test workspace)
   const currentDirs = getAllowedDirectories();
-  setAllowedDirectories([...currentDirs, SAMPLE_FILES_DIR, TEST_WORKSPACE]);
+  setAllowedDirectories([...currentDirs, TEST_FIXTURES_DIR, TEST_WORKSPACE]);
 }
 
 async function cleanupTestEnvironment() {
@@ -50,7 +44,7 @@ describe("read_file with documents", () => {
   // FIXME: PDF parsing broken due to pdfjs-dist import.meta issue in Jest
   test.skip("reads PDF through read_file", async () => {
     const result = await handleReadTool("read_file", {
-      path: path.join(SAMPLE_FILES_DIR, "sample.pdf"),
+      path: path.join(TEST_FIXTURES_DIR, "sample.pdf"),
     });
 
     expect(result.content).toBeDefined();
@@ -78,18 +72,18 @@ describe("read_file with documents", () => {
   // FIXME: PDF parsing broken due to pdfjs-dist import.meta issue in Jest
   test.skip("mode parameters ignored for PDF documents", async () => {
     const resultFull = await handleReadTool("read_file", {
-      path: path.join(SAMPLE_FILES_DIR, "sample.pdf"),
+      path: path.join(TEST_FIXTURES_DIR, "sample.pdf"),
       mode: "full",
     });
 
     const resultHead = await handleReadTool("read_file", {
-      path: path.join(SAMPLE_FILES_DIR, "sample.pdf"),
+      path: path.join(TEST_FIXTURES_DIR, "sample.pdf"),
       mode: "head",
       lines: 5,
     });
 
     const resultTail = await handleReadTool("read_file", {
-      path: path.join(SAMPLE_FILES_DIR, "sample.pdf"),
+      path: path.join(TEST_FIXTURES_DIR, "sample.pdf"),
       mode: "tail",
       lines: 5,
     });
@@ -139,7 +133,7 @@ describe("read_multiple_files with documents", () => {
     const result = await handleReadTool("read_multiple_files", {
       files: [
         { path: path.join(FIXTURES_DIR, "text.txt") },
-        { path: path.join(SAMPLE_FILES_DIR, "sample.pdf") },
+        { path: path.join(TEST_FIXTURES_DIR, "sample.pdf") },
       ],
     });
 
@@ -192,7 +186,7 @@ describe("read_multiple_files with documents", () => {
   // FIXME: PDF parsing broken due to pdfjs-dist import.meta issue in Jest
   test.skip("returns consistent format for document files", async () => {
     const result = await handleReadTool("read_multiple_files", {
-      files: [{ path: path.join(SAMPLE_FILES_DIR, "sample.pdf") }],
+      files: [{ path: path.join(TEST_FIXTURES_DIR, "sample.pdf") }],
     });
 
     const content = result.content[0] as { type: string; text: string };
