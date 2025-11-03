@@ -53,7 +53,7 @@ function parseArguments() {
   if (args.includes("--help") || args.includes("-h")) {
     console.error(
       `Vulcan File Ops MCP Server v${
-        process.env.npm_package_version || "1.0.0"
+        process.env.npm_package_version || "1.0.1"
       }`
     );
     console.error("");
@@ -90,7 +90,7 @@ function parseArguments() {
   // Handle version flag
   if (args.includes("--version") || args.includes("-v")) {
     console.error(
-      `vulcan-file-ops v${process.env.npm_package_version || "1.0.0"}`
+      `vulcan-file-ops v${process.env.npm_package_version || "1.0.1"}`
     );
     process.exit(0);
   }
@@ -484,7 +484,7 @@ function generateServerDescription(): string {
 const server = new Server(
   {
     name: "vulcan-file-ops",
-    version: "1.0.0",
+    version: "1.0.1",
   },
   {
     capabilities: {
@@ -512,7 +512,7 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => {
     },
     serverInfo: {
       name: "vulcan-file-ops",
-      version: "1.0.0",
+      version: "1.0.1",
     },
     instructions: generateServerDescription(),
   };
