@@ -1,6 +1,6 @@
 {
   "name": "vulcan-file-ops",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for filesystem access - Vulcan File Ops",
   "license": "MIT",
   "author": "Lloyd Barcatan",
