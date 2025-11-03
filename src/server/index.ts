@@ -265,8 +265,9 @@ const directoryArgs = parseArguments();
 // Async initialization function to be called in runServer()
 async function initializeDirectories() {
   // Detect MCP mode: stdin/stdout are NOT TTY (piped) = MCP mode
-  const isMCP = !process.stdin.isTTY && !process.stdout.isTTY || 
-                process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio"));
+  const isMCP =
+    (!process.stdin.isTTY && !process.stdout.isTTY) ||
+    process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio"));
 
   // During MCP operation, suppress ALL console output to prevent protocol corruption
   if (isMCP) {
@@ -335,12 +336,20 @@ async function initializeDirectories() {
         try {
           const stats = await fs.stat(dir);
           if (!stats.isDirectory()) {
-            console.error(`Error: Approved folder ${dir} is not a directory`);
-            process.exit(1);
+            const errorMsg = `Error: Approved folder ${dir} is not a directory`;
+            console.error(errorMsg);
+            // In MCP mode, don't exit - just skip invalid directories
+            if (!isMCP) {
+              process.exit(1);
+            }
           }
         } catch (error) {
-          console.error(`Error accessing approved folder ${dir}:`, error);
-          process.exit(1);
+          const errorMsg = `Error accessing approved folder ${dir}: ${error}`;
+          console.error(errorMsg);
+          // In MCP mode, don't exit - just skip invalid directories
+          if (!isMCP) {
+            process.exit(1);
+          }
         }
       })
     );
@@ -379,12 +388,20 @@ async function initializeDirectories() {
         try {
           const stats = await fs.stat(dir);
           if (!stats.isDirectory()) {
-            console.error(`Error: Legacy directory ${dir} is not a directory`);
-            process.exit(1);
+            const errorMsg = `Error: Legacy directory ${dir} is not a directory`;
+            console.error(errorMsg);
+            // In MCP mode, don't exit - just skip invalid directories
+            if (!isMCP) {
+              process.exit(1);
+            }
           }
         } catch (error) {
-          console.error(`Error accessing legacy directory ${dir}:`, error);
-          process.exit(1);
+          const errorMsg = `Error accessing legacy directory ${dir}: ${error}`;
+          console.error(errorMsg);
+          // In MCP mode, don't exit - just skip invalid directories
+          if (!isMCP) {
+            process.exit(1);
+          }
         }
       })
     );
@@ -784,7 +801,22 @@ server.oninitialized = async () => {
 // Start server
 export async function runServer() {
   // Initialize directories before starting server
-  await initializeDirectories();
+  // BUT: Don't exit on errors during MCP mode - just log and continue
+  try {
+    await initializeDirectories();
+  } catch (error) {
+    // In MCP mode, don't crash the server on init errors
+    // Just continue with empty configuration
+    const isMCP =
+      (!process.stdin.isTTY && !process.stdout.isTTY) ||
+      process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio"));
+
+    if (!isMCP) {
+      // In non-MCP mode, we can show errors and exit
+      throw error;
+    }
+    // In MCP mode, silently continue - server can work without approved folders
+  }
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
