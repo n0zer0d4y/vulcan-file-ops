@@ -15,6 +15,7 @@ import {
 import fs from "fs/promises";
 import path from "path";
 import dotenv from "dotenv";
+import packageJson from "../../package.json" with { type: "json" };
 import { normalizePath, expandHome } from "../utils/path-utils.js";
 import { getValidRootDirectories } from "../utils/roots-utils.js";
 import {
@@ -23,6 +24,9 @@ import {
   setIgnoredFolders,
   setEnabledTools,
 } from "../utils/lib.js";
+
+// Single source of truth for version - imported from package.json
+const VERSION = packageJson.version;
 
 // Import tool handlers
 import { getReadTools } from "../tools/read-tools.js";
@@ -52,9 +56,7 @@ function parseArguments() {
   // Handle help flag
   if (args.includes("--help") || args.includes("-h")) {
     console.error(
-      `Vulcan File Ops MCP Server v${
-        process.env.npm_package_version || "1.0.1"
-      }`
+      `Vulcan File Ops MCP Server v${VERSION}`
     );
     console.error("");
     console.error("Usage: vulcan-file-ops [options]");
@@ -90,7 +92,7 @@ function parseArguments() {
   // Handle version flag
   if (args.includes("--version") || args.includes("-v")) {
     console.error(
-      `vulcan-file-ops v${process.env.npm_package_version || "1.0.1"}`
+      `vulcan-file-ops v${VERSION}`
     );
     process.exit(0);
   }
@@ -484,7 +486,7 @@ function generateServerDescription(): string {
 const server = new Server(
   {
     name: "vulcan-file-ops",
-    version: "1.0.1",
+    version: VERSION,
   },
   {
     capabilities: {
@@ -512,7 +514,7 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => {
     },
     serverInfo: {
       name: "vulcan-file-ops",
-      version: "1.0.1",
+      version: VERSION,
     },
     instructions: generateServerDescription(),
   };
