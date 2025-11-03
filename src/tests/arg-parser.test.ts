@@ -374,7 +374,7 @@ describe("Argument Parser Enhancement", () => {
       const args = [
         "--approved-folders",
         "C:/Development/Projects/Test/filesystem-of-a-down-approved-folders-test",
-        "C:/Development/Projects/MCP-Servers/filesystem-of-a-down/docs/sample-files",
+        "C:/Development/Projects/MCP-Servers/filesystem-of-a-down/src/tests/fixtures",
         "--ignored-folders",
         "node_modules,dist,.git",
         "--enabled-tools",
@@ -397,7 +397,7 @@ describe("Argument Parser Enhancement", () => {
       const result = parseArguments(args);
       expect(result.approvedFoldersFromArgs).toEqual([
         "C:/Development/Projects/Test/filesystem-of-a-down-approved-folders-test",
-        "C:/Development/Projects/MCP-Servers/filesystem-of-a-down/docs/sample-files",
+        "C:/Development/Projects/MCP-Servers/filesystem-of-a-down/src/tests/fixtures",
       ]);
       expect(result.ignoredFolders).toEqual(["node_modules", "dist", ".git"]);
       expect(result.enabledTools).toHaveLength(15);
