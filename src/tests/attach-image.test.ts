@@ -4,29 +4,23 @@ import path from "path";
 import { handleReadTool } from "../tools/read-tools.js";
 import { setAllowedDirectories, getAllowedDirectories } from "../utils/lib.js";
 
-const SAMPLE_FILES_DIR = path.join(
-  __dirname,
-  "..",
-  "..",
-  "docs",
-  "sample-files"
-);
+const TEST_FIXTURES_DIR = path.join(__dirname, "fixtures");
 const TEST_WORKSPACE = path.join(__dirname, "..", "..", "test-workspace");
 const FIXTURES_DIR = path.join(TEST_WORKSPACE, "fixtures");
 
-// Test image files provided by user
+// Test image files - now in src/tests/fixtures
 const TEST_IMAGE_1 = path.join(
-  SAMPLE_FILES_DIR,
+  TEST_FIXTURES_DIR,
   "pexels-stephen-alicia-1315397-3063411.jpg"
 );
-const TEST_IMAGE_2 = path.join(SAMPLE_FILES_DIR, "pexels-stywo-1054218.jpg");
+const TEST_IMAGE_2 = path.join(TEST_FIXTURES_DIR, "pexels-stywo-1054218.jpg");
 
 async function setupTestEnvironment() {
   await fs.mkdir(FIXTURES_DIR, { recursive: true });
 
   // Register test directories
   const currentDirs = getAllowedDirectories();
-  setAllowedDirectories([...currentDirs, SAMPLE_FILES_DIR, TEST_WORKSPACE]);
+  setAllowedDirectories([...currentDirs, TEST_FIXTURES_DIR, TEST_WORKSPACE]);
 }
 
 async function cleanupTestEnvironment() {
@@ -246,7 +240,7 @@ describe("attach_image tool", () => {
     });
 
     test("rejects unsupported file formats (PDF)", async () => {
-      const pdfPath = path.join(SAMPLE_FILES_DIR, "sample.pdf");
+      const pdfPath = path.join(TEST_FIXTURES_DIR, "sample.pdf");
 
       await expect(
         handleReadTool("attach_image", { path: pdfPath })
