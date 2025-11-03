@@ -201,6 +201,28 @@ describe("Command Validation", () => {
       const result = validateCommand("npm install && npm test", false);
       expect(result.allowed).toBe(true);
     });
+
+    test("blocks command injection via approved commands (CVE-2025-54795 pattern)", () => {
+      // This test verifies that command injection attempts through approved commands
+      // are detected by root command extraction
+      // Pattern: echo "\"; malicious_command; echo \""
+      const injectedCommand = 'echo "; malicious_command; echo"';
+      
+      // Command validation passes (no command substitution detected)
+      const result = validateCommand(injectedCommand, false);
+      expect(result.allowed).toBe(true);
+      
+      // However, root extraction detects multiple commands, including unapproved ones
+      // This is what prevents the injection at the approval stage
+      const roots = extractRootCommands(injectedCommand);
+      expect(roots).toContain("malicious_command");
+      expect(roots).toContain("echo");
+      expect(roots.length).toBeGreaterThan(1); // Multiple commands detected
+      
+      // If only "echo" is approved, this injection would be blocked
+      const approvedCommands = new Set(["echo"]);
+      expect(isCommandApproved(injectedCommand, approvedCommands)).toBe(false);
+    });
   });
 
   describe("isCommandApproved", () => {

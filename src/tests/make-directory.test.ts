@@ -181,6 +181,53 @@ describe("make_directory tool", () => {
         })
       ).rejects.toThrow();
     });
+
+    it("should block prefix collision attacks (CVE-2025-54794 pattern)", async () => {
+      // This test verifies that paths with similar prefixes but different directories
+      // are correctly rejected, preventing the path restriction bypass vulnerability
+      const baseDirName = path.basename(testDir);
+      const parentDir = path.dirname(testDir);
+      
+      // Create a directory with prefix matching the allowed directory name
+      // but is actually a sibling, not a subdirectory
+      const evilDir = path.join(parentDir, `${baseDirName}_evil`);
+      
+      // Ensure the evil directory exists (simulating attacker-controlled environment)
+      try {
+        await fs.mkdir(evilDir, { recursive: true });
+      } catch {
+        // Directory might already exist, continue
+      }
+      
+      // Attempt to create directory in the evil path - should be blocked
+      const attackPath = path.join(evilDir, "unauthorized");
+      await expect(
+        handleFileSystemTool("make_directory", {
+          paths: attackPath,
+        })
+      ).rejects.toThrow("Access denied");
+      
+      // Verify the directory was NOT created
+      await expect(fs.access(attackPath)).rejects.toThrow();
+      
+      // Cleanup
+      try {
+        await fs.rm(evilDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup errors
+      }
+    });
+
+    it("should allow legitimate subdirectories despite prefix similarity", async () => {
+      // Verify that legitimate subdirectories still work correctly
+      const legitPath = path.join(testDir, "project", "src");
+      const result = await handleFileSystemTool("make_directory", {
+        paths: legitPath,
+      });
+
+      expect(result.content[0].text).toContain("Successfully created directory");
+      await expect(fs.access(legitPath)).resolves.toBeUndefined();
+    });
   });
 
   describe("Backward compatibility", () => {

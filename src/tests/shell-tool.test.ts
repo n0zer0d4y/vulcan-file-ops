@@ -104,6 +104,50 @@ describe("Shell Tool", () => {
     ).rejects.toThrow("Command substitution");
   });
 
+  test("blocks command injection via approved commands (CVE-2025-54795 pattern)", async () => {
+    // This test verifies that command injection attempts through approved commands
+    // are blocked when dangerous commands are detected
+    // Pattern: echo test; rm -rf /tmp; echo done
+    // Even though echo is approved, the dangerous rm command should be detected
+    if (os.platform() !== "win32") {
+      // On Unix, test with rm -rf which matches dangerous patterns
+      const injectedCommand = "echo test; rm -rf /tmp/*; echo done";
+      
+      // Should be rejected because rm -rf matches dangerous patterns
+      await expect(
+        handleShellTool("execute_shell", {
+          command: injectedCommand,
+          requiresApproval: false, // Even without explicit approval, dangerous commands are blocked
+        })
+      ).rejects.toThrow("Command requires approval");
+    } else {
+      // On Windows, test with del /s which matches dangerous patterns  
+      const injectedCommand = "echo test; del /s /q C:\\tmp\\*; echo done";
+      
+      // Should be rejected because del /s matches dangerous patterns
+      await expect(
+        handleShellTool("execute_shell", {
+          command: injectedCommand,
+          requiresApproval: false,
+        })
+      ).rejects.toThrow("Command requires approval");
+    }
+  });
+
+  test("blocks unapproved commands when requiresApproval is true", async () => {
+    // This test verifies that unapproved commands are blocked when requiresApproval is set
+    const injectedCommand = "echo test; unapproved_command; echo done";
+    
+    // Should be rejected because extractRootCommands will detect "unapproved_command"
+    // which is not in the approved list, and requiresApproval is true
+    await expect(
+      handleShellTool("execute_shell", {
+        command: injectedCommand,
+        requiresApproval: true,
+      })
+    ).rejects.toThrow("Command requires approval");
+  });
+
   test("rejects empty command", async () => {
     await expect(
       handleShellTool("execute_shell", {
