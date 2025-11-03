@@ -16,6 +16,7 @@ A configurable Model Context Protocol server for secure filesystem operations th
 - [Install](#install)
 - [Usage](#usage)
 - [API](#api)
+- [Security](#security)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -503,6 +504,82 @@ Execute shell commands with security controls
 ---
 
 For detailed usage examples, see [Tool Usage Guide](docs/TOOL_USAGE_GUIDE.md)
+
+## Security
+
+This MCP server implements enterprise-grade security controls to protect against common filesystem vulnerabilities. All security measures are based on industry best practices and address known CVE patterns.
+
+### Protected Against
+
+#### Path Traversal & Directory Bypass (CWE-22)
+
+- **Protected Pattern**: CVE-2025-54794 / CVE-2025-53110
+- **Mitigation**: Canonical path validation with path separator requirements prevents prefix collision attacks
+- **Implementation**: Uses `isPathWithinAllowedDirectories()` which requires actual subdirectory paths (not just prefix matches)
+- **Example**: Blocks `/path/to/allowed_evil` when `/path/to/allowed` is approved
+
+#### Command Injection (CWE-78)
+
+- **Protected Pattern**: CVE-2025-54795
+- **Mitigation**: Multi-layer validation including command substitution detection, root command extraction, and dangerous pattern matching
+- **Implementation**: Blocks `$()`, `` ` ` ``, `>()`, `<()` patterns; validates all commands in chains; requires approval for dangerous operations
+- **Example**: Prevents `echo "; malicious_cmd; echo"` injection attempts
+
+#### Symlink Attacks (CWE-59 / CWE-61)
+
+- **Protected Pattern**: CVE-2025-53109
+- **Mitigation**: All paths resolved via `realpath()` before validation to follow symlinks to actual targets
+- **Implementation**: Symlink targets must be within allowed directories; validates parent directories for new files
+- **Example**: Blocks symlinks pointing to `/etc/passwd` even if symlink is in allowed directory
+
+#### Directory Traversal
+
+- **Mitigation**: Strict path normalization and validation against approved directories only
+- **Implementation**: Rejects `../` traversal attempts; validates parent directories before file creation
+- **Example**: Blocks access to `/unauthorized/path` regardless of traversal attempts
+
+### Security Controls
+
+#### Path Validation
+
+- **Canonical Path Resolution**: All paths normalized and resolved before validation
+- **Separator Requirement**: Subdirectories must include path separators (prevents prefix collision)
+- **Realpath Resolution**: Symlinks resolved to actual targets before access checks
+- **Parent Directory Validation**: New file creation validates parent directory is within allowed scope
+
+#### Command Execution
+
+- **Command Whitelisting**: Only pre-approved commands execute without confirmation
+- **Pattern Detection**: Blocks dangerous patterns (destructive, privilege escalation, network execution)
+- **Command Substitution Blocking**: Prevents `$()`, backticks, process substitution
+- **Root Command Extraction**: Analyzes all commands in chained operations for approval
+
+#### Access Controls
+
+- **Directory Whitelisting**: Operations restricted to explicitly approved directories
+- **Runtime Registration**: Additional directories require explicit registration via `register_directory` tool
+- **Atomic Validation**: Paths validated before any file operations begin
+- **Cross-Platform Safety**: Proper handling of Windows/Unix path differences and UNC paths
+
+### Security Best Practices
+
+1. **Minimize Approved Directories**: Only approve directories that require AI access
+2. **Use Directory Filtering**: Exclude sensitive folders (e.g., `.git`, `node_modules`) from listings
+3. **Limit Tool Access**: Enable only necessary tools via `--enabled-tools` or `--enabled-tool-categories`
+4. **Command Approval**: Pre-approve safe commands via `--approved-commands`; require approval for others
+5. **Monitor Operations**: Review MCP client logs for unexpected access attempts
+6. **Regular Updates**: Keep the server updated to receive security patches
+
+### Security Audit
+
+This server has been audited against known vulnerabilities:
+
+- ✅ CVE-2025-54794 (Path Restriction Bypass) - **FIXED**
+- ✅ CVE-2025-54795 (Command Injection) - **PROTECTED**
+- ✅ CVE-2025-53109 (Symlink Attacks) - **PROTECTED**
+- ✅ CVE-2025-53110 (Directory Containment Bypass) - **PROTECTED**
+
+For detailed security analysis, see [Vulnerability Research Findings](docs/VULNERABILITY_RESEARCH_FINDINGS.md).
 
 ### Supported File Types
 
