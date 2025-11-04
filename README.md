@@ -102,9 +102,16 @@ Install in a specific project:
 npm install @n0zer0d4y/vulcan-file-ops
 ```
 
+### Prerequisites
+
+**Node.js** (version 14 or higher) must be installed on your system. This provides npm and npx, which are required to run this package.
+
+- **Download Node.js**: https://nodejs.org/
+- **Check installation**: Run `node --version` and `npm --version`
+
 ### Dependencies
 
-Requires Node.js with support for ES2022 modules. The server has no external service dependencies and operates entirely locally.
+The server has no external service dependencies and operates entirely locally. All required packages are automatically downloaded when using npx.
 
 ## Usage
 
