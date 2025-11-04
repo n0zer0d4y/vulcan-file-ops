@@ -15,7 +15,9 @@ import {
   executeShellCommand,
   type ExecutionResult,
 } from "../utils/shell-execution.js";
-import { validatePath } from "../utils/lib.js";
+import { validatePath, getAllowedDirectories } from "../utils/lib.js";
+import { extractPathsFromCommand } from "../utils/command-path-extraction.js";
+import { isPathWithinAllowedDirectories } from "../utils/path-validation.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
@@ -191,6 +193,54 @@ export async function handleShellTool(
           `Working directory must be within allowed directories.`
       );
     }
+  }
+
+  // Extract and validate paths from command arguments
+  try {
+    const extractedPaths = extractPathsFromCommand(validatedArgs.command, workdir);
+    
+    if (extractedPaths.length > 0) {
+      const allowedDirs = getAllowedDirectories();
+      
+      // If no allowed directories are configured, block all paths for security
+      if (allowedDirs.length === 0) {
+        throw new Error(
+          `Access denied: Command contains paths but no allowed directories are configured.\n` +
+          `Extracted paths:\n` +
+          extractedPaths.map(p => `  - ${p}`).join('\n') +
+          `\n\nPlease configure allowed directories using --approved-folders or register_directory tool.`
+        );
+      }
+      
+      // Validate each extracted path
+      const invalidPaths: string[] = [];
+      for (const extractedPath of extractedPaths) {
+        if (!isPathWithinAllowedDirectories(extractedPath, allowedDirs)) {
+          invalidPaths.push(extractedPath);
+        }
+      }
+      
+      if (invalidPaths.length > 0) {
+        throw new Error(
+          `Access denied: Command contains paths outside allowed directories:\n` +
+          invalidPaths.map(p => `  - ${p}`).join('\n') +
+          `\n\nAllowed directories:\n` +
+          allowedDirs.map(d => `  - ${d}`).join('\n') +
+          `\n\nTo access these paths, register their parent directories using register_directory tool.`
+        );
+      }
+    }
+  } catch (error) {
+    // If path extraction fails, be conservative and block
+    // (better to block than allow potentially unsafe commands)
+    if (error instanceof Error && error.message.includes('Access denied')) {
+      throw error;
+    }
+    // For extraction errors, block the command to be safe
+    throw new Error(
+      `Path validation failed: ${error instanceof Error ? error.message : String(error)}\n` +
+      `Command blocked for security. Please ensure all paths in the command are within allowed directories.`
+    );
   }
 
   // Execute command
