@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "@jest/globals";
 import { promises as fs } from "fs";
 import path from "path";
+import os from "os";
 import {
   isDocumentFile,
   parseDocument,
@@ -8,7 +9,7 @@ import {
 } from "../utils/document-parser.js";
 
 const TEST_FIXTURES_DIR = path.join(__dirname, "fixtures");
-const TEST_WORKSPACE = path.join(__dirname, "..", "..", "test-workspace");
+const TEST_WORKSPACE = path.join(os.tmpdir(), `vulcan-test-doc-parser-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 const FIXTURES_DIR = path.join(TEST_WORKSPACE, "fixtures");
 
 // Helper to create test fixtures

@@ -1,11 +1,12 @@
 import { describe, test, expect, beforeAll, afterAll } from "@jest/globals";
 import { promises as fs } from "fs";
 import path from "path";
+import os from "os";
 import { handleReadTool } from "../tools/read-tools.js";
 import { setAllowedDirectories, getAllowedDirectories } from "../utils/lib.js";
 
 const TEST_FIXTURES_DIR = path.join(__dirname, "fixtures");
-const TEST_WORKSPACE = path.join(__dirname, "..", "..", "test-workspace");
+const TEST_WORKSPACE = path.join(os.tmpdir(), `vulcan-test-attach-img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 const FIXTURES_DIR = path.join(TEST_WORKSPACE, "fixtures");
 
 // Test image files - now in src/tests/fixtures
