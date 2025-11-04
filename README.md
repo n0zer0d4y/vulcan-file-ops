@@ -496,10 +496,12 @@ Execute shell commands with security controls
 
 - `command` (string): Shell command to execute
 - `description` (string, optional): Command purpose
-- `workdir` (string, optional): Working directory
+- `workdir` (string, optional): Working directory (must be within allowed directories)
 - `timeout` (number, optional): Timeout in milliseconds (default: 30000)
 
 **Output:** Exit code, stdout, stderr, and execution metadata
+
+**Security:** All file/directory paths in command arguments are automatically extracted and validated against allowed directories. Commands referencing paths outside approved directories are blocked, preventing directory restriction bypasses.
 
 ---
 
@@ -524,6 +526,14 @@ This MCP server implements enterprise-grade security controls to protect against
 - **Mitigation**: Multi-layer validation including command substitution detection, root command extraction, and dangerous pattern matching
 - **Implementation**: Blocks `$()`, `` ` ` ``, `>()`, `<()` patterns; validates all commands in chains; requires approval for dangerous operations
 - **Example**: Prevents `echo "; malicious_cmd; echo"` injection attempts
+
+#### Shell Command Directory Bypass (CWE-22)
+
+- **Protected Pattern**: Path restriction bypass via absolute paths in shell commands
+- **Mitigation**: Path extraction and validation for all file/directory paths embedded in command arguments
+- **Implementation**: Extracts paths from command strings (handles Windows/Unix paths, quotes, relative paths, environment variables), validates each path against allowed directories before execution
+- **Example**: Blocks `type C:\Windows\System32\drivers\etc\hosts` and `cat /etc/passwd` when these paths are outside approved directories
+- **Scope**: Applies to all shell commands executed via `execute_shell` tool - paths in arguments are validated just like filesystem operations
 
 #### Symlink Attacks (CWE-59 / CWE-61)
 
@@ -553,6 +563,7 @@ This MCP server implements enterprise-grade security controls to protect against
 - **Pattern Detection**: Blocks dangerous patterns (destructive, privilege escalation, network execution)
 - **Command Substitution Blocking**: Prevents `$()`, backticks, process substitution
 - **Root Command Extraction**: Analyzes all commands in chained operations for approval
+- **Path Argument Validation**: Extracts and validates all file/directory paths in command arguments against allowed directories (prevents bypass via absolute paths in commands)
 
 #### Access Controls
 
