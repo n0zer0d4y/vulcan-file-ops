@@ -1,7 +1,7 @@
 {
-  "name": "vulcan-file-ops",
+  "name": "@n0zer0d4y/vulcan-file-ops",
   "version": "1.0.1",
-  "description": "MCP server for filesystem access - Vulcan File Ops",
+  "description": "MCP server that gives Claude Desktop and other AI assistants filesystem superpowers—read, write, edit, and manage files like AI coding assistants",
   "license": "MIT",
   "author": "Lloyd Barcatan",
   "homepage": "https://github.com/n0zer0d4y/vulcan-file-ops",
@@ -17,11 +17,20 @@
     "vulcan-file-ops": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist/cli.js",
+    "dist/index.js",
+    "dist/server/index.js",
+    "dist/tools/*.js",
+    "dist/utils/*.js",
+    "dist/types/index.js",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc && shx chmod +x dist/*.js",
     "prepare": "npm run build",
+    "prepublishOnly": "npm test",
     "watch": "tsc --watch",
     "test": "jest --config=jest.config.cjs",
     "test:coverage": "jest --config=jest.config.cjs --coverage",
