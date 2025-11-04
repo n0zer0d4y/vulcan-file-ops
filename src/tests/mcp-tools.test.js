@@ -30,8 +30,18 @@ async function testAllTools() {
     await client.connect(transport);
     console.log("✅ Connected to MCP server");
 
-    // Test directory for operations
-    const testDir = "C:\\Development\\Projects\\Test";
+    // Test directory for operations - use a temporary directory relative to project root
+    const testDir = path.join(process.cwd(), "test-workspace", "mcp-test-" + Date.now());
+
+    // Create the test directory first
+    console.log("\n📁 0. Creating test directory...");
+    try {
+      fs.mkdirSync(testDir, { recursive: true });
+      console.log("✅ Test directory created:", testDir);
+    } catch (error) {
+      console.log("❌ Failed to create test directory:", error.message);
+      return;
+    }
 
     // 1. Register the test directory
     console.log("\n📁 1. Registering test directory...");
@@ -218,7 +228,15 @@ async function testAllTools() {
     console.log("\n🎉 ALL TOOLS TESTED SUCCESSFULLY!");
     console.log("✅ Vulcan File Ops MCP Server is working perfectly!");
     console.log("\n📁 Test directory:", testDir);
-    console.log("🧹 You can manually clean up the test files if needed.");
+    console.log("🧹 Cleaning up test directory...");
+
+    // Clean up test directory
+    try {
+      fs.rmSync(testDir, { recursive: true, force: true });
+      console.log("✅ Test directory cleaned up");
+    } catch (error) {
+      console.log("⚠️  Failed to clean up test directory:", error.message);
+    }
   } catch (error) {
     console.error("❌ Test failed:", error);
     console.error("Stack:", error.stack);
