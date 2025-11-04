@@ -1,0 +1,27 @@
+# Additional safety exclusions (files array in package.json handles most exclusions)
+src/
+coverage/
+local_docs/
+docs/_build/
+.cache/
+.temp/
+*.tmp
+*.tgz
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+jest.config.*
+tsconfig.json
+.eslintrc*
+.prettierrc*
+*.config.js
+*.config.ts
+glama.json
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.env*
+!.env.example
