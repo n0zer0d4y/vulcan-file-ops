@@ -6,8 +6,6 @@
 [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A configurable Model Context Protocol server for secure filesystem operations that absolutely **rocks**. Enables AI assistants to dynamically access and manage file system resources with runtime directory registration and selective tool activation.
-
 **Transform your desktop AI assistants into powerful development partners.** Vulcan File Ops bridges the gap between conversational AI (Claude Desktop, ChatGPT Desktop, etc.) and your local filesystem, unlocking the same file manipulation capabilities found in AI-powered IDEs like Cursor and Cline. Write code, refactor projects, manage documentation, and perform complex file operations—matching the power of dedicated AI coding assistants. With enterprise-grade security controls, dynamic directory registration, and intelligent tool filtering, you maintain complete control while your AI assistant handles the heavy lifting.
 
 ## Table of Contents
@@ -76,16 +74,32 @@ This server supports multiple flexible approaches to directory access:
 
 ## Install
 
-This server requires Node.js and can be installed locally for full control.
+This server requires Node.js and can be installed globally, locally, or run directly with npx. **Most users should use npx** for instant execution without installation.
+
+### Quick Start (Recommended for Most Users)
+
+Run directly without installation:
 
 ```bash
-npm install -g vulcan-file-ops
+npx @n0zer0d4y/vulcan-file-ops --help
 ```
 
-Or install in a specific project:
+**For developers** who want to contribute or modify the code, see [Local Repository Execution](#option-4-local-repository-execution-for-developers) below.
+
+### Global Installation
+
+Install globally for system-wide access:
 
 ```bash
-npm install vulcan-file-ops
+npm install -g @n0zer0d4y/vulcan-file-ops
+```
+
+### Local Installation
+
+Install in a specific project:
+
+```bash
+npm install @n0zer0d4y/vulcan-file-ops
 ```
 
 ### Dependencies
@@ -94,9 +108,28 @@ Requires Node.js with support for ES2022 modules. The server has no external ser
 
 ## Usage
 
+This server can be used directly with npx (recommended) or installed globally/locally. The npx approach requires no installation and always uses the latest version.
+
 ### Basic Configuration
 
 Add to your MCP client configuration (e.g., `claude_desktop_config.json`):
+
+#### Option 1: Using npx (Recommended - No Installation Required)
+
+```json
+{
+  "mcpServers": {
+    "vulcan-file-ops": {
+      "command": "npx",
+      "args": ["@n0zer0d4y/vulcan-file-ops"]
+    }
+  }
+}
+```
+
+#### Option 2: Using Global Installation
+
+After running `npm install -g @n0zer0d4y/vulcan-file-ops`:
 
 ```json
 {
@@ -108,13 +141,89 @@ Add to your MCP client configuration (e.g., `claude_desktop_config.json`):
 }
 ```
 
+#### Option 3: Using Local Installation
+
+After running `npm install @n0zer0d4y/vulcan-file-ops` in your project:
+
+```json
+{
+  "mcpServers": {
+    "vulcan-file-ops": {
+      "command": "./node_modules/.bin/vulcan-file-ops"
+    }
+  }
+}
+```
+
+#### Option 4: Local Repository Execution (For Developers)
+
+If you've cloned this repository and want to run from source:
+
+```bash
+git clone https://github.com/n0zer0d4y/vulcan-file-ops.git
+cd vulcan-file-ops
+npm install
+npm run build
+```
+
+Then configure your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "vulcan-file-ops": {
+      "command": "vulcan-file-ops",
+      "args": ["--approved-folders", "/path/to/your/allowed/directories"]
+    }
+  }
+}
+```
+
+**Note:** The `vulcan-file-ops` command will be available in your PATH after building, or you can use the full path: `./dist/cli.js`
+
 ### Advanced Configuration
 
 #### Approved Folders
 
 Pre-configure specific directories for immediate access on server start:
 
-**macOS/Linux:**
+**macOS/Linux (npx):**
+
+```json
+{
+  "mcpServers": {
+    "vulcan-file-ops": {
+      "command": "npx",
+      "args": [
+        "@n0zer0d4y/vulcan-file-ops",
+        "--approved-folders",
+        "/Users/username/projects,/Users/username/documents"
+      ]
+    }
+  }
+}
+```
+
+**Windows (npx):**
+
+```json
+{
+  "mcpServers": {
+    "vulcan-file-ops": {
+      "command": "npx",
+      "args": [
+        "@n0zer0d4y/vulcan-file-ops",
+        "--approved-folders",
+        "C:/Users/username/projects,C:/Users/username/documents"
+      ]
+    }
+  }
+}
+```
+
+**Alternative: Local Repository Execution**
+
+For users running from a cloned repository (after `npm run build`):
 
 ```json
 {
@@ -124,22 +233,6 @@ Pre-configure specific directories for immediate access on server start:
       "args": [
         "--approved-folders",
         "/Users/username/projects,/Users/username/documents"
-      ]
-    }
-  }
-}
-```
-
-**Windows:**
-
-```json
-{
-  "mcpServers": {
-    "vulcan-file-ops": {
-      "command": "vulcan-file-ops",
-      "args": [
-        "--approved-folders",
-        "C:/Users/username/projects,C:/Users/username/documents"
       ]
     }
   }
@@ -194,8 +287,12 @@ Exclude specific folders from directory listings:
 {
   "mcpServers": {
     "vulcan-file-ops": {
-      "command": "vulcan-file-ops",
-      "args": ["--ignored-folders", "node_modules,dist,.git,.next"]
+      "command": "npx",
+      "args": [
+        "@n0zer0d4y/vulcan-file-ops",
+        "--ignored-folders",
+        "node_modules,dist,.git,.next"
+      ]
     }
   }
 }
@@ -209,8 +306,12 @@ Enable only specific tool categories:
 {
   "mcpServers": {
     "vulcan-file-ops": {
-      "command": "vulcan-file-ops",
-      "args": ["--enabled-tool-categories", "read,filesystem"]
+      "command": "npx",
+      "args": [
+        "@n0zer0d4y/vulcan-file-ops",
+        "--enabled-tool-categories",
+        "read,filesystem"
+      ]
     }
   }
 }
@@ -222,8 +323,12 @@ Or enable individual tools:
 {
   "mcpServers": {
     "vulcan-file-ops": {
-      "command": "vulcan-file-ops",
-      "args": ["--enabled-tools", "read_file,list_directory,search_files"]
+      "command": "npx",
+      "args": [
+        "@n0zer0d4y/vulcan-file-ops",
+        "--enabled-tools",
+        "read_file,list_directory,search_files"
+      ]
     }
   }
 }
@@ -233,14 +338,15 @@ Or enable individual tools:
 
 All configuration options can be combined:
 
-**Windows Example:**
+**Windows Example (npx):**
 
 ```json
 {
   "mcpServers": {
     "vulcan-file-ops": {
-      "command": "vulcan-file-ops",
+      "command": "npx",
       "args": [
+        "@n0zer0d4y/vulcan-file-ops",
         "--approved-folders",
         "C:/Users/username/projects,C:/Users/username/documents",
         "--ignored-folders",
@@ -257,7 +363,34 @@ All configuration options can be combined:
 }
 ```
 
-**macOS/Linux Example:**
+**macOS/Linux Example (npx):**
+
+```json
+{
+  "mcpServers": {
+    "vulcan-file-ops": {
+      "command": "npx",
+      "args": [
+        "@n0zer0d4y/vulcan-file-ops",
+        "--approved-folders",
+        "/Users/username/projects,/Users/username/documents",
+        "--ignored-folders",
+        "node_modules,dist,.git",
+        "--approved-commands",
+        "npm,node,git,ls,pwd,cat,echo",
+        "--enabled-tool-categories",
+        "read,filesystem,shell",
+        "--enabled-tools",
+        "list_directory,search_files,register_directory,execute_shell"
+      ]
+    }
+  }
+}
+```
+
+**Alternative: Local Repository Execution**
+
+For users running from a cloned repository (after `npm run build`):
 
 ```json
 {
