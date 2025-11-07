@@ -334,7 +334,7 @@ Or enable individual tools:
       "args": [
         "@n0zer0d4y/vulcan-file-ops",
         "--enabled-tools",
-        "read_file,list_directory,search_files"
+        "read_file,list_directory,grep_files"
       ]
     }
   }
@@ -363,7 +363,7 @@ All configuration options can be combined:
         "--enabled-tool-categories",
         "read,filesystem,shell",
         "--enabled-tools",
-        "list_directory,search_files,register_directory,execute_shell"
+        "read_file,attach_image,read_multiple_files,write_file,write_multiple_files,edit_file,make_directory,list_directory,move_file,file_operations,delete_files,get_file_info,register_directory,list_allowed_directories,glob_files,grep_files,execute_shell"
       ]
     }
   }
@@ -388,7 +388,7 @@ All configuration options can be combined:
         "--enabled-tool-categories",
         "read,filesystem,shell",
         "--enabled-tools",
-        "list_directory,search_files,register_directory,execute_shell"
+        "read_file,attach_image,read_multiple_files,write_file,write_multiple_files,edit_file,make_directory,list_directory,move_file,file_operations,delete_files,get_file_info,register_directory,list_allowed_directories,glob_files,grep_files,execute_shell"
       ]
     }
   }
@@ -414,7 +414,7 @@ For users running from a cloned repository (after `npm run build`):
         "--enabled-tool-categories",
         "read,filesystem,shell",
         "--enabled-tools",
-        "list_directory,search_files,register_directory,execute_shell"
+        "read_file,attach_image,read_multiple_files,write_file,write_multiple_files,edit_file,make_directory,list_directory,move_file,file_operations,delete_files,get_file_info,register_directory,list_allowed_directories,glob_files,grep_files,execute_shell"
       ]
     }
   }
