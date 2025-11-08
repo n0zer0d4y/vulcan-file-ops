@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-11-08
+
+### Added
+
+- Multi-file editing capability for edit_file tool
+  - Support for editing up to 50 files in a single operation
+  - Mode discriminator (single/multiple) for backward compatibility
+  - Atomic operations with automatic rollback on failure
+  - Per-file configuration options (matching strategy, dryRun, failOnAmbiguous)
+  - Concurrent file processing for improved performance
+  - Detailed multi-file diff output with summary statistics
+- Comprehensive test suite for multi-file editing functionality
+- Implementation plan documentation in local_docs folder
+
+### Changed
+
+- Enhanced edit_file tool schema to support both single and multi-file modes
+- Updated README documentation with complete edit_file feature specification
+- Improved EditFileArgsSchema with explicit mode parameter for better MCP client compatibility
+
+### Fixed
+
+- Test timeout issues in shell-tool.test.ts and shell-command-path-validation.test.ts
+
 ## [1.0.1] - 2025-11-03
 
 ### Security
