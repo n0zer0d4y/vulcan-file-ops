@@ -778,8 +778,9 @@ export async function applyFileEdits(
   edits: FileEdit[],
   dryRun: boolean = false,
   matchingStrategy: "exact" | "flexible" | "fuzzy" | "auto" = "auto",
-  failOnAmbiguous: boolean = true
-): Promise<string> {
+  failOnAmbiguous: boolean = true,
+  returnMetadata?: boolean
+): Promise<string | { diff: string; metadata: MatchResult[] }> {
   // Read file content and detect original line ending
   const rawContent = await fs.readFile(filePath, "utf-8");
   const originalLineEnding = detectLineEnding(rawContent);
@@ -839,6 +840,13 @@ export async function applyFileEdits(
       } catch {}
       throw error;
     }
+  }
+
+  if (returnMetadata) {
+    return {
+      diff: formattedDiff,
+      metadata: editResults
+    };
   }
 
   return formattedDiff;
