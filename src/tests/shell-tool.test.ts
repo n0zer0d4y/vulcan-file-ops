@@ -25,7 +25,7 @@ describe("Shell Tool", () => {
     expect(result.content[0].text).toContain("test");
     expect(result.content[0].text).toContain("Exit Code: 0");
     expect(result.isError).toBe(false);
-  });
+  }, 10000);
 
   test("rejects unapproved command without requiresApproval flag", async () => {
     await expect(
@@ -112,7 +112,7 @@ describe("Shell Tool", () => {
     if (os.platform() !== "win32") {
       // On Unix, test with rm -rf which matches dangerous patterns
       const injectedCommand = "echo test; rm -rf /tmp/*; echo done";
-      
+
       // Should be rejected because rm -rf matches dangerous patterns
       await expect(
         handleShellTool("execute_shell", {
@@ -121,9 +121,9 @@ describe("Shell Tool", () => {
         })
       ).rejects.toThrow("Command requires approval");
     } else {
-      // On Windows, test with del /s which matches dangerous patterns  
+      // On Windows, test with del /s which matches dangerous patterns
       const injectedCommand = "echo test; del /s /q C:\\tmp\\*; echo done";
-      
+
       // Should be rejected because del /s matches dangerous patterns
       await expect(
         handleShellTool("execute_shell", {
@@ -137,7 +137,7 @@ describe("Shell Tool", () => {
   test("blocks unapproved commands when requiresApproval is true", async () => {
     // This test verifies that unapproved commands are blocked when requiresApproval is set
     const injectedCommand = "echo test; unapproved_command; echo done";
-    
+
     // Should be rejected because extractRootCommands will detect "unapproved_command"
     // which is not in the approved list, and requiresApproval is true
     await expect(

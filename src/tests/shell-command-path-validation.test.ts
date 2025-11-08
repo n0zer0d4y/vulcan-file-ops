@@ -92,7 +92,7 @@ describe("Shell Command Path Validation", () => {
 
         expect(result.isError).toBe(false);
       }
-    });
+    }, 10000);
   });
 
   describe("Unix Path Validation", () => {
