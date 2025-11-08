@@ -6,13 +6,16 @@ import {
   WriteFileArgsSchema,
   WriteMultipleFilesArgsSchema,
   EditFileArgsSchema,
+  EditFileRequestSchema,
   type WriteFileArgs,
   type WriteMultipleFilesArgs,
   type EditFileArgs,
+  type EditFileRequest,
 } from "../types/index.js";
 import {
   validatePath,
   writeFileContent,
+  readFileContent,
   applyFileEdits,
 } from "../utils/lib.js";
 import {
@@ -23,6 +26,27 @@ import {
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
+
+interface EditFileResult {
+  path: string;
+  success: boolean;
+  strategy?: "exact" | "flexible" | "fuzzy";
+  occurrences?: number;
+  diff?: string;
+  error?: string;
+  dryRun?: boolean;
+}
+
+interface EditFileResults {
+  results: EditFileResult[];
+  summary: {
+    total: number;
+    successful: number;
+    failed: number;
+    hasFailures: boolean;
+    failFast: boolean;
+  };
+}
 
 /**
  * Helper function to write file content based on file extension
@@ -73,6 +97,206 @@ async function writeFileBasedOnExtension(
   }
 }
 
+async function processFileEditRequest(
+  request: EditFileRequest,
+  failOnAmbiguous: boolean = true
+): Promise<EditFileResult> {
+  try {
+    const validPath = await validatePath(request.path);
+    const result = await applyFileEdits(
+      validPath,
+      request.edits,
+      request.dryRun || false,
+      request.matchingStrategy || "auto",
+      request.failOnAmbiguous !== undefined
+        ? request.failOnAmbiguous
+        : failOnAmbiguous,
+      true // Return metadata
+    );
+
+    if (typeof result === "string") {
+      throw new Error("Expected metadata but got string result");
+    }
+
+    // Aggregate metadata from all edits
+    const totalOccurrences = result.metadata.reduce(
+      (sum, r) => sum + r.occurrences,
+      0
+    );
+    const usedStrategies = [...new Set(result.metadata.map((r) => r.strategy))];
+    const finalStrategy =
+      result.metadata[result.metadata.length - 1]?.strategy || "exact";
+    const warning = result.metadata.find((r) => r.warning)?.warning;
+    const ambiguity = result.metadata.find((r) => r.ambiguity)?.ambiguity;
+
+    return {
+      path: request.path,
+      success: true,
+      strategy: finalStrategy,
+      occurrences: totalOccurrences,
+      diff: result.diff,
+      dryRun: request.dryRun,
+    };
+  } catch (error) {
+    return {
+      path: request.path,
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function processMultiFileEdits(
+  files: EditFileRequest[],
+  failFast: boolean = true
+): Promise<EditFileResults> {
+  const results: EditFileResult[] = [];
+  const rollbackData: Array<{ path: string; originalContent: string }> = [];
+  let hasFailures = false;
+
+  try {
+    // Process files sequentially if failFast is true, concurrently if false
+    if (failFast) {
+      // Process sequentially to stop on first failure
+      for (const request of files) {
+        // For rollback capability, read original content before editing
+        let originalContent: string | undefined;
+        if (failFast && !request.dryRun) {
+          try {
+            originalContent = await readFileContent(
+              await validatePath(request.path)
+            );
+          } catch (error) {
+            // If we can't read the original content, we can't provide rollback
+            // This is acceptable - the file might not exist or be readable
+          }
+        }
+
+        const result = await processFileEditRequest(request);
+        results.push(result);
+
+        // Track successful edits for potential rollback
+        if (
+          result.success &&
+          !request.dryRun &&
+          originalContent !== undefined
+        ) {
+          rollbackData.push({
+            path: request.path,
+            originalContent,
+          });
+        }
+
+        if (!result.success) {
+          hasFailures = true;
+          // Rollback all previously successful edits
+          await performRollback(rollbackData);
+          break; // Stop processing remaining files
+        }
+      }
+    } else {
+      // Process all concurrently, collect all results (no rollback for concurrent mode)
+      const promises = files.map((request) => processFileEditRequest(request));
+      const allResults = await Promise.allSettled(promises);
+
+      for (let i = 0; i < allResults.length; i++) {
+        const settled = allResults[i];
+        const request = files[i];
+
+        if (settled.status === "fulfilled") {
+          results.push(settled.value);
+          if (!settled.value.success) hasFailures = true;
+        } else {
+          // Handle unexpected promise rejections
+          results.push({
+            path: request.path,
+            success: false,
+            error: `Unexpected error: ${settled.reason}`,
+          });
+          hasFailures = true;
+        }
+      }
+    }
+  } catch (error) {
+    // If there's an unexpected error during processing, attempt rollback
+    if (failFast && rollbackData.length > 0) {
+      await performRollback(rollbackData);
+    }
+    throw error;
+  }
+
+  return {
+    results,
+    summary: {
+      total: files.length,
+      successful: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
+      hasFailures,
+      failFast,
+    },
+  };
+}
+
+async function performRollback(
+  rollbackData: Array<{ path: string; originalContent: string }>
+): Promise<void> {
+  for (const item of rollbackData.reverse()) {
+    // Rollback in reverse order
+    try {
+      await writeFileContent(item.path, item.originalContent);
+    } catch (rollbackError) {
+      // Log rollback failure but don't throw - we want to attempt all rollbacks
+      console.error(`Failed to rollback ${item.path}: ${rollbackError}`);
+    }
+  }
+}
+
+function formatMultiFileEditResults(editResults: EditFileResults): string {
+  let output = "";
+
+  // Summary header
+  output += `Multi-File Edit Summary:\n`;
+  output += `Total files: ${editResults.summary.total}\n`;
+  output += `Successful: ${editResults.summary.successful}\n`;
+  output += `Failed: ${editResults.summary.failed}\n`;
+  output += `Mode: ${
+    editResults.summary.failFast ? "failFast (atomic)" : "continueOnError"
+  }\n`;
+
+  if (editResults.summary.failFast && editResults.summary.hasFailures) {
+    output += `⚠️  Atomic operation failed - all successful edits were rolled back\n`;
+  }
+
+  output += `\n`;
+
+  // Individual file results
+  editResults.results.forEach((result, index) => {
+    output += `File ${index + 1}: ${result.path}\n`;
+    output += `Status: ${result.success ? "✓ SUCCESS" : "✗ FAILED"}\n`;
+
+    if (result.success) {
+      if (result.strategy) {
+        output += `Strategy: ${result.strategy}\n`;
+      }
+      if (result.occurrences !== undefined) {
+        output += `Occurrences: ${result.occurrences}\n`;
+      }
+      if (result.dryRun) {
+        output += `Mode: DRY RUN (no changes made)\n`;
+      }
+      if (result.diff) {
+        output += `\n${result.diff}\n`;
+      }
+    } else {
+      output += `Error: ${result.error}\n`;
+    }
+
+    output += "\n" + "=".repeat(50) + "\n\n";
+  });
+
+  return output.trim();
+}
+
 export function getWriteTools() {
   return [
     {
@@ -102,31 +326,34 @@ export function getWriteTools() {
     {
       name: "edit_file",
       description:
-        "Apply precise modifications to text and code files with intelligent matching. " +
-        "Performs exact text substitution with automatic fallback to flexible whitespace-insensitive matching " +
-        "and fuzzy token-based matching for maximum reliability. " +
-        "Supports multiple sequential edits in a single operation. " +
-        "Provides detailed diff output with change statistics and strategy information. " +
-        "Preserves original file formatting including indentation and line endings. " +
-        "\n\n" +
-        "Matching Strategies (in order when using 'auto'):\n" +
+        "Apply precise modifications to text and code files with intelligent matching.\n\n" +
+        "**Single File Editing (mode: 'single'):**\n" +
+        "Edit one file with multiple sequential edits using exact, flexible, or fuzzy matching strategies.\n\n" +
+        "**Multi-File Editing (mode: 'multiple'):**\n" +
+        "Edit multiple files concurrently in a single operation. Each file can have its own edit configuration.\n\n" +
+        "**Matching Strategies:**\n" +
         "1. Exact: Character-for-character match (fastest, safest)\n" +
         "2. Flexible: Whitespace-insensitive, preserves original indentation\n" +
-        "3. Fuzzy: Token-based regex matching for maximum compatibility\n" +
-        "\n" +
-        "Best Practices:\n" +
+        "3. Fuzzy: Token-based regex matching for maximum compatibility\n\n" +
+        "**Features:**\n" +
+        "- Concurrent processing for multi-file operations\n" +
+        "- Per-file matching strategy control\n" +
+        "- Dry-run preview mode\n" +
+        "- Detailed diff output with statistics\n" +
+        "- Atomic operations with rollback capability\n" +
+        "- Cross-platform line ending preservation\n\n" +
+        "**Maximum:** 50 files per multi-file operation\n\n" +
+        "**Best Practices:**\n" +
         "- Include 3-5 lines of context before and after the change for reliability\n" +
         "- Add 'instruction' field to describe the purpose of each edit\n" +
         "- Use 'dryRun: true' to preview changes before applying\n" +
         "- For multiple related changes, use array of edits (applied sequentially)\n" +
         "- Set 'expectedOccurrences' to validate replacement count\n" +
-        "- Use 'matchingStrategy' to control matching behavior (defaults to 'auto')\n" +
-        "\n" +
-        "CRITICAL - Multi-line Content:\n" +
+        "- Use 'matchingStrategy' to control matching behavior (defaults to 'auto')\n\n" +
+        "**CRITICAL - Multi-line Content:**\n" +
         "- Use actual newline characters in oldText/newText strings, NOT \\n escape sequences\n" +
         "- The MCP/JSON layer handles encoding automatically\n" +
-        "- Using \\n literally will search for/write backslash+n characters (wrong!)\n" +
-        "\n" +
+        "- Using \\n literally will search for/write backslash+n characters (wrong!)\n\n" +
         "Only works within allowed directories.",
       inputSchema: zodToJsonSchema(EditFileArgsSchema) as ToolInput,
     },
@@ -171,17 +398,49 @@ export async function handleWriteTool(name: string, args: any) {
       if (!parsed.success) {
         throw new Error(`Invalid arguments for edit_file: ${parsed.error}`);
       }
-      const validPath = await validatePath(parsed.data.path);
-      const result = await applyFileEdits(
-        validPath,
-        parsed.data.edits,
-        parsed.data.dryRun,
-        parsed.data.matchingStrategy,
-        parsed.data.failOnAmbiguous
-      );
-      return {
-        content: [{ type: "text", text: result }],
-      };
+
+      // Determine mode and route to appropriate handler
+      const mode = parsed.data.mode || "single";
+
+      if (mode === "single") {
+        // Single file mode (backward compatible)
+        if (!parsed.data.path || !parsed.data.edits) {
+          throw new Error("Single mode requires 'path' and 'edits' fields");
+        }
+
+        const result = await processFileEditRequest({
+          path: parsed.data.path,
+          edits: parsed.data.edits,
+          matchingStrategy: parsed.data.matchingStrategy,
+          dryRun: parsed.data.dryRun,
+          failOnAmbiguous: parsed.data.failOnAmbiguous,
+        });
+
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+
+        return {
+          content: [{ type: "text", text: result.diff }],
+        };
+      } else if (mode === "multiple") {
+        // Multi-file mode
+        if (!parsed.data.files) {
+          throw new Error("Multiple mode requires 'files' field");
+        }
+
+        const editResults = await processMultiFileEdits(
+          parsed.data.files,
+          parsed.data.failFast
+        );
+
+        const output = formatMultiFileEditResults(editResults);
+        return {
+          content: [{ type: "text", text: output }],
+        };
+      } else {
+        throw new Error(`Invalid mode: ${mode}`);
+      }
     }
 
     case "write_multiple_files": {

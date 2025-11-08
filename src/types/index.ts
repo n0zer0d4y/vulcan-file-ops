@@ -294,28 +294,33 @@ export const EditOperation = z.object({
     ),
 }) satisfies z.ZodType<FileEdit>;
 
-export const EditFileArgsSchema = z.object({
-  path: z.string(),
+// Single file edit request (for multi-file operations)
+export const EditFileRequestSchema = z.object({
+  path: z.string().describe("Path to the file to edit"),
+
   edits: z
     .array(EditOperation)
     .min(1, "At least one edit must be provided")
-    .describe("Array of edits to apply sequentially"),
-  dryRun: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe("Preview changes using git-style diff format without writing"),
+    .describe("Array of edits to apply to this file"),
+
   matchingStrategy: z
     .enum(["exact", "flexible", "fuzzy", "auto"])
     .optional()
     .default("auto")
     .describe(
-      "Matching strategy:\n" +
+      "Matching strategy for this file:\n" +
         "- 'exact': Strict character-for-character match (fastest, safest)\n" +
         "- 'flexible': Whitespace-insensitive line-by-line matching\n" +
         "- 'fuzzy': Token-based regex matching (most permissive)\n" +
         "- 'auto': Try exact → flexible → fuzzy (recommended, default)"
     ),
+
+  dryRun: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Preview changes for this file without writing"),
+
   failOnAmbiguous: z
     .boolean()
     .optional()
@@ -325,6 +330,88 @@ export const EditFileArgsSchema = z.object({
         "If false, replace first occurrence only and warn about ambiguity."
     ),
 });
+
+// Enhanced edit file schema (supports both single and multi-file with explicit mode)
+export const EditFileArgsSchema = z
+  .object({
+    // Mode discriminator
+    mode: z
+      .enum(["single", "multiple"])
+      .optional()
+      .default("single")
+      .describe("Edit mode: 'single' for one file, 'multiple' for batch editing"),
+
+    // Single file fields (required when mode is "single")
+    path: z
+      .string()
+      .optional()
+      .describe("Path to file (required for single mode)"),
+
+    edits: z
+      .array(EditOperation)
+      .min(1)
+      .optional()
+      .describe("Array of edits to apply"),
+
+    // Multi-file fields (required when mode is "multiple")
+    files: z
+      .array(EditFileRequestSchema)
+      .min(1, "At least one file must be provided")
+      .max(50, "Maximum 50 files per operation")
+      .optional()
+      .describe("Array of file edit requests (required for multiple mode)"),
+
+    failFast: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe(
+        "Stop processing on first file failure (true) or continue with remaining files (false)"
+      ),
+
+    // Global options
+    matchingStrategy: z
+      .enum(["exact", "flexible", "fuzzy", "auto"])
+      .optional()
+      .default("auto")
+      .describe(
+        "Matching strategy:\n" +
+          "- 'exact': Strict character-for-character match (fastest, safest)\n" +
+          "- 'flexible': Whitespace-insensitive line-by-line matching\n" +
+          "- 'fuzzy': Token-based regex matching (most permissive)\n" +
+          "- 'auto': Try exact → flexible → fuzzy (recommended, default)"
+      ),
+
+    dryRun: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("Preview changes without writing"),
+
+    failOnAmbiguous: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe(
+        "If true, fail when oldText matches multiple locations (unless expectedOccurrences > 1). " +
+          "If false, replace first occurrence only and warn about ambiguity."
+      ),
+  })
+  .refine(
+    (data) => {
+      // Validate based on mode
+      if (data.mode === "single") {
+        return data.path && data.edits;
+      } else if (data.mode === "multiple") {
+        return data.files;
+      }
+      return false;
+    },
+    {
+      message: "Invalid configuration: 'path' and 'edits' required for single mode, 'files' required for multiple mode",
+    }
+  )
+  .describe("Edit files with intelligent matching. Supports single file or batch multi-file operations.");
 
 export const MakeDirectoryArgsSchema = z.object({
   paths: z
@@ -510,6 +597,7 @@ export type WriteMultipleFilesArgs = z.infer<
   typeof WriteMultipleFilesArgsSchema
 >;
 export type EditOperationType = z.infer<typeof EditOperation>;
+export type EditFileRequest = z.infer<typeof EditFileRequestSchema>;
 export type EditFileArgs = z.infer<typeof EditFileArgsSchema>;
 export type MakeDirectoryArgs = z.infer<typeof MakeDirectoryArgsSchema>;
 export type ListDirectoryArgs = z.infer<typeof ListDirectoryArgsSchema>;
