@@ -1,6 +1,7 @@
 ﻿# Vulcan File Ops MCP Server
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
+[![MCP Badge](https://lobehub.com/badge/mcp/n0zer0d4y-vulcan-file-ops)](https://lobehub.com/mcp/n0zer0d4y-vulcan-file-ops)
 [![MCP Server](https://badge.mcpx.dev?type=server "MCP Server")](https://modelcontextprotocol.io)
 [![MCP Server with Tools](https://badge.mcpx.dev?type=server&features=tools "MCP server with tools")](https://modelcontextprotocol.io)
 [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
@@ -52,7 +53,7 @@ This enhanced implementation provides:
 
 - **Dynamic Directory Access**: Runtime directory registration through conversational commands
 - **Document Support**: Read/write PDF, DOCX, PPTX, XLSX, ODT with HTML-to-document conversion
-- **Batch Operations**: Read, write, copy, move, or rename multiple files concurrently
+- **Batch Operations**: Read, write, edit, copy, move, or rename multiple files concurrently
 - **Advanced File Editing**: Pattern-based modifications with flexible matching and diff preview
 - **Flexible Reading Modes**: Full file, head/tail, or arbitrary line ranges
 - **Image Vision Support**: Attach images for AI analysis and description
@@ -500,20 +501,46 @@ Create or replace multiple files concurrently
 
 ##### edit_file
 
-Intelligent file modification with pattern matching
+Apply precise modifications to text and code files with intelligent matching. Supports both single-file and multi-file operations.
 
-**Input:**
+**Single File Input (mode: 'single'):**
 
+- `mode` (string, optional): Set to `"single"` (default if omitted for backward compatibility)
 - `path` (string): File path
-- `edits` (array): List of edit operations (oldText, newText)
-- `dryRun` (boolean, optional): Preview changes without writing
+- `edits` (array): List of edit operations, each containing:
+  - `oldText` (string): Text to search for (include 3-5 lines of context)
+  - `newText` (string): Text to replace with
+  - `instruction` (string, optional): Description of what this edit does
+  - `expectedOccurrences` (number, optional): Expected match count (default: 1)
 - `matchingStrategy` (string, optional): Matching strategy
-  - `exact` - Character-for-character match
-  - `flexible` - Whitespace-insensitive matching
-  - `fuzzy` - Token-based regex matching
+  - `exact` - Character-for-character match (fastest, safest)
+  - `flexible` - Whitespace-insensitive matching, preserves indentation
+  - `fuzzy` - Token-based regex matching (most permissive)
   - `auto` - Try exact → flexible → fuzzy (default)
+- `dryRun` (boolean, optional): Preview changes without writing (default: false)
+- `failOnAmbiguous` (boolean, optional): Fail when matches are ambiguous (default: true)
 
-**Output:** Detailed diff with statistics showing changes made
+**Multi-File Input (mode: 'multiple'):**
+
+- `mode` (string): Set to `"multiple"`
+- `files` (array): Array of file edit requests (max 50), each containing:
+  - `path` (string): File path
+  - `edits` (array): List of edit operations for this file (same structure as above)
+  - `matchingStrategy` (string, optional): Per-file matching strategy
+  - `dryRun` (boolean, optional): Per-file dry-run mode
+  - `failOnAmbiguous` (boolean, optional): Per-file ambiguity handling
+- `failFast` (boolean, optional): Stop on first failure with rollback (true, default) or continue (false)
+
+**Features:**
+
+- Concurrent processing for multi-file operations
+- Atomic operations with automatic rollback on failure (when failFast: true)
+- Cross-platform line ending preservation
+- Detailed diff output with statistics
+
+**Output:** Detailed diff with statistics. For multi-file operations, includes per-file results and summary statistics with rollback information for atomic operations.
+
+**Important:** Use actual newline characters in oldText/newText, NOT escape sequences like `\n`.
 
 #### Filesystem Operations
 
@@ -664,6 +691,76 @@ Execute shell commands with security controls
 **Output:** Exit code, stdout, stderr, and execution metadata
 
 **Security:** All file/directory paths in command arguments are automatically extracted and validated against allowed directories. Commands referencing paths outside approved directories are blocked, preventing directory restriction bypasses.
+
+### Multi-File Edit Examples
+
+**Batch refactor across multiple files:**
+
+```typescript
+{
+  files: [
+    {
+      path: "src/utils.ts",
+      edits: [{
+        instruction: "Update deprecated function call",
+        oldText: "oldApi.getData()",
+        newText: "newApi.fetchData()"
+      }]
+    },
+    {
+      path: "src/components/Button.tsx",
+      edits: [{
+        instruction: "Update component prop",
+        oldText: "onClick={oldHandler}",
+        newText: "onClick={newHandler}"
+      }]
+    },
+    {
+      path: "src/hooks/useData.ts",
+      edits: [{
+        instruction: "Update hook implementation",
+        oldText: "const data = oldApi.getData()",
+        newText: "const data = newApi.fetchData()"
+      }]
+    }
+  ],
+  failFast: true  // Atomic operation - rollback all if any fails
+}
+```
+
+**Per-file configuration:**
+
+```typescript
+{
+  files: [
+    {
+      path: "config.json",
+      edits: [{
+        oldText: '"version": "1.0.0"',
+        newText: '"version": "1.1.0"'
+      }],
+      matchingStrategy: "exact"  // JSON needs exact matches
+    },
+    {
+      path: "src/app.py",
+      edits: [{
+        oldText: "def old_function():",
+        newText: "def new_function():"
+      }],
+      matchingStrategy: "flexible"  // Python indentation may vary
+    },
+    {
+      path: "README.md",
+      edits: [{
+        oldText: "## Old Section",
+        newText: "## New Section"
+      }],
+      matchingStrategy: "auto"  // Let AI decide best strategy
+    }
+  ],
+  failFast: false  // Continue even if some files fail
+}
+```
 
 ---
 
