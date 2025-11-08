@@ -7,7 +7,7 @@
   "homepage": "https://github.com/n0zer0d4y/vulcan-file-ops",
   "repository": {
     "type": "git",
-    "url": "https://github.com/n0zer0d4y/vulcan-file-ops.git"
+    "url": "git+https://github.com/n0zer0d4y/vulcan-file-ops.git"
   },
   "bugs": {
     "url": "https://github.com/n0zer0d4y/vulcan-file-ops/issues"
