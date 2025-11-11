@@ -1,7 +1,7 @@
 ﻿# Vulcan File Ops MCP Server
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
-[![MCP Badge](https://lobehub.com/badge/mcp/n0zer0d4y-vulcan-file-ops)](https://lobehub.com/mcp/n0zer0d4y-vulcan-file-ops)
+![MCP Dev](https://badge.mcpx.dev?type=dev "MCP Dev")
 [![MCP Server](https://badge.mcpx.dev?type=server "MCP Server")](https://modelcontextprotocol.io)
 [![MCP Server with Tools](https://badge.mcpx.dev?type=server&features=tools "MCP server with tools")](https://modelcontextprotocol.io)
 [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
