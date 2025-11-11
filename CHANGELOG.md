@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2025-11-11
+
+### Fixed
+
+- Corrected Docker entrypoint to use dist/cli.js instead of dist/index.js for proper MCP server initialization
+- Updated Node.js base image from node:22.12-alpine to node:22-alpine for better version compatibility
+
+### Changed
+
+- Added keywords to package.json for improved NPM discoverability
+
 ## [1.1.0] - 2025-11-08
 
 ### Added

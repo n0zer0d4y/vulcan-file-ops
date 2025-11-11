@@ -1,6 +1,6 @@
 {
   "name": "@n0zer0d4y/vulcan-file-ops",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "MCP server that gives Claude Desktop and other AI assistants filesystem superpowers—read, write, edit, and manage files like AI coding assistants",
   "license": "MIT",
   "author": "Lloyd Barcatan",
@@ -12,6 +12,31 @@
   "bugs": {
     "url": "https://github.com/n0zer0d4y/vulcan-file-ops/issues"
   },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "context-engineering",
+    "ai",
+    "ai-tools",
+    "claude",
+    "claude-desktop",
+    "filesystem",
+    "file-operations",
+    "file-management",
+    "read-files",
+    "write-files",
+    "edit-files",
+    "ai-assistant",
+    "llm",
+    "llm-tools",
+    "pdf",
+    "docx",
+    "document-parsing",
+    "code-editor",
+    "typescript",
+    "ai-assisted-coding"
+  ],
   "type": "module",
   "bin": {
     "vulcan-file-ops": "dist/cli.js"
