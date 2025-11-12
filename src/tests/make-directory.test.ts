@@ -291,4 +291,70 @@ describe("make_directory tool", () => {
       }
     });
   });
+
+  describe("MCP client serialization workaround", () => {
+    it("should handle stringified array from buggy MCP clients", async () => {
+      const paths = [
+        path.join(testDir, "stringified1"),
+        path.join(testDir, "stringified2"),
+        path.join(testDir, "stringified3"),
+      ];
+
+      // Simulate buggy MCP client behavior - array is stringified
+      const stringifiedPaths = JSON.stringify(paths);
+
+      const result = await handleFileSystemTool("make_directory", {
+        paths: stringifiedPaths, // Passing stringified array instead of actual array
+      });
+
+      expect(result.content[0].text).toContain("Successfully created 3 directories");
+
+      for (const p of paths) {
+        await expect(fs.access(p)).resolves.toBeUndefined();
+      }
+    });
+
+    it("should still work with correctly formatted arrays", async () => {
+      const paths = [
+        path.join(testDir, "correct1"),
+        path.join(testDir, "correct2"),
+      ];
+
+      // Proper array format (how it should be sent)
+      const result = await handleFileSystemTool("make_directory", {
+        paths: paths, // Proper array
+      });
+
+      expect(result.content[0].text).toContain("Successfully created 2 directories");
+
+      for (const p of paths) {
+        await expect(fs.access(p)).resolves.toBeUndefined();
+      }
+    });
+
+    it("should handle paths that literally start with '[' character", async () => {
+      // Edge case: path that looks like it could be an array but isn't valid JSON
+      const weirdPath = path.join(testDir, "[bracket-folder]");
+
+      const result = await handleFileSystemTool("make_directory", {
+        paths: weirdPath,
+      });
+
+      expect(result.content[0].text).toContain("Successfully created directory");
+      await expect(fs.access(weirdPath)).resolves.toBeUndefined();
+    });
+
+    it("should handle malformed stringified arrays gracefully", async () => {
+      // Malformed JSON that starts with '[' but isn't valid
+      const malformedPath = path.join(testDir, "[not-valid-json");
+
+      const result = await handleFileSystemTool("make_directory", {
+        paths: malformedPath,
+      });
+
+      // Should treat as single path since JSON.parse fails
+      expect(result.content[0].text).toContain("Successfully created directory");
+      await expect(fs.access(malformedPath)).resolves.toBeUndefined();
+    });
+  });
 });

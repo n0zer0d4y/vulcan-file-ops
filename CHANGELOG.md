@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2025-01-12
+
+### Fixed
+
+- Added defensive string-to-array parsing for `make_directory` tool to handle MCP clients that incorrectly serialize array parameters as stringified JSON
+  - Workaround for Claude Desktop serialization issue
+  - Zero impact on correctly-functioning MCP clients (Cursor IDE verified)
+  - Includes diagnostic logging to identify problematic clients
+  - Comprehensive test coverage for stringified arrays and edge cases
+
+### Added
+
+- 4 new test cases for MCP client serialization workaround
+- Diagnostic logging when stringified array parameters are detected
+- Root Cause Analysis document in `local_docs/make_directory_batch_failure_rca.md`
+
 ## [1.1.1] - 2025-11-11
 
 ### Fixed

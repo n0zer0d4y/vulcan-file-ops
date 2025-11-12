@@ -585,10 +585,32 @@ export async function handleFileSystemTool(name: string, args: any) {
         );
       }
 
+      // Defensive handling for MCP clients that may stringify arrays
+      // Some MCP clients (e.g., Claude Desktop) incorrectly serialize array parameters
+      // as stringified JSON instead of proper arrays. This workaround detects and fixes that.
+      let pathsInput = parsed.data.paths;
+
+      // If paths is a string that looks like a JSON array, try to parse it
+      if (typeof pathsInput === "string" && pathsInput.trim().startsWith("[")) {
+        try {
+          const parsedArray = JSON.parse(pathsInput);
+          if (Array.isArray(parsedArray)) {
+            pathsInput = parsedArray;
+            // Log for diagnostics - helps identify which clients have serialization issues
+            console.error(
+              "[INFO] make_directory: Detected and corrected stringified array parameter"
+            );
+          }
+        } catch {
+          // If parsing fails, treat as single path (existing behavior)
+          // This handles edge cases like paths literally named "[something]"
+        }
+      }
+
       // Normalize to array (single path or multiple paths)
-      const pathsToCreate = Array.isArray(parsed.data.paths)
-        ? parsed.data.paths
-        : [parsed.data.paths];
+      const pathsToCreate = Array.isArray(pathsInput)
+        ? pathsInput
+        : [pathsInput];
 
       // Validate all paths first (atomic - fail before any creation)
       const allowedDirs = getAllowedDirectories();

@@ -1,5 +1,3 @@
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/n0zer0d4y-vulcan-file-ops-badge.png)](https://mseep.ai/app/n0zer0d4y-vulcan-file-ops)
-
 ﻿# Vulcan File Ops MCP Server
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
@@ -8,6 +6,7 @@
 [![MCP Server with Tools](https://badge.mcpx.dev?type=server&features=tools "MCP server with tools")](https://modelcontextprotocol.io)
 [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/n0zer0d4y-vulcan-file-ops-badge.png)](https://mseep.ai/app/n0zer0d4y-vulcan-file-ops)
 
 **Transform your desktop AI assistants into powerful development partners.** Vulcan File Ops bridges the gap between conversational AI (Claude Desktop, ChatGPT Desktop, etc.) and your local filesystem, unlocking the same file manipulation capabilities found in AI-powered IDEs like Cursor and Cline. Write code, refactor projects, manage documentation, and perform complex file operations—matching the power of dedicated AI coding assistants. With enterprise-grade security controls, dynamic directory registration, and intelligent tool filtering, you maintain complete control while your AI assistant handles the heavy lifting.
 
