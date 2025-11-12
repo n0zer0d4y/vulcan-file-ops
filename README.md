@@ -442,6 +442,8 @@ The AI will use the `register_directory` tool to gain access, then perform opera
 
 Read file contents with flexible modes (full, head, tail, range)
 
+**Note:** This tool is limited to single-file operations only. **RECOMMENDED:** Use `read_multiple_files` instead, which supports both single and batch file operations for greater flexibility.
+
 **Input:**
 
 - `path` (string): File path
@@ -481,6 +483,8 @@ Batch read multiple files concurrently
 ##### write_file
 
 Create or replace file content
+
+**Note:** This tool is limited to single-file operations only. **RECOMMENDED:** Use `write_multiple_files` instead, which supports both single and batch file operations for greater flexibility.
 
 **Input:**
 
@@ -576,6 +580,8 @@ List directory contents with multiple output formats
 ##### move_file
 
 Relocate or rename files and directories
+
+**Note:** This tool is limited to single-file operations only. **RECOMMENDED:** Use `file_operations` instead, which supports move, copy, and rename operations for both single and batch files with greater flexibility.
 
 **Input:**
 
