@@ -64,6 +64,7 @@ describe("Shell Command Path Validation", () => {
 
       const result = await handleShellTool("execute_shell", {
         command,
+        workdir: allowedDir, // Specify workdir within allowed directory
       });
 
       expect(result.isError).toBe(false);
@@ -88,6 +89,7 @@ describe("Shell Command Path Validation", () => {
 
         const result = await handleShellTool("execute_shell", {
           command,
+          workdir: allowedDir, // Specify workdir within allowed directory
         });
 
         expect(result.isError).toBe(false);
@@ -129,6 +131,7 @@ describe("Shell Command Path Validation", () => {
 
         const result = await handleShellTool("execute_shell", {
           command,
+          workdir: allowedDir, // Specify workdir within allowed directory
         });
 
         expect(result.isError).toBe(false);
@@ -228,6 +231,7 @@ describe("Shell Command Path Validation", () => {
     test("allows echo command without paths", async () => {
       const result = await handleShellTool("execute_shell", {
         command: "echo hello world",
+        workdir: allowedDir, // Specify workdir within allowed directory
       });
 
       expect(result.isError).toBe(false);
@@ -239,6 +243,7 @@ describe("Shell Command Path Validation", () => {
 
       const result = await handleShellTool("execute_shell", {
         command,
+        workdir: allowedDir, // Specify workdir within allowed directory
       });
 
       expect(result.isError).toBe(false);
@@ -249,6 +254,7 @@ describe("Shell Command Path Validation", () => {
 
       const result = await handleShellTool("execute_shell", {
         command,
+        workdir: allowedDir, // Specify workdir within allowed directory
       });
 
       expect(result.isError).toBe(false);
@@ -259,6 +265,7 @@ describe("Shell Command Path Validation", () => {
 
       const result = await handleShellTool("execute_shell", {
         command,
+        workdir: allowedDir, // Specify workdir within allowed directory
       });
 
       expect(result.isError).toBe(false);
@@ -275,6 +282,7 @@ describe("Shell Command Path Validation", () => {
 
         const result = await handleShellTool("execute_shell", {
           command,
+          workdir: allowedDir, // Specify workdir within allowed directory
         });
 
         expect(result.isError).toBe(false);
@@ -358,6 +366,7 @@ describe("Shell Command Path Validation", () => {
 
       const result1 = await handleShellTool("execute_shell", {
         command: command1,
+        workdir: allowedDir, // Specify workdir within allowed directory
       });
 
       expect(result1.isError).toBe(false);
@@ -369,6 +378,7 @@ describe("Shell Command Path Validation", () => {
 
       const result2 = await handleShellTool("execute_shell", {
         command: command2,
+        workdir: allowedDir, // Specify workdir within allowed directory
       });
 
       expect(result2.isError).toBe(false);

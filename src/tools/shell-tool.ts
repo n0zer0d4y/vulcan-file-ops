@@ -75,9 +75,14 @@ export function getShellTools() {
           " "
         )} <command>' on ${shellConfig.platform}. ` +
         `\n\nThe tool captures stdout, stderr, exit codes, and signals. ` +
-        `Working directory can be specified (must be within allowed directories). ` +
         `Commands exceeding the timeout will be automatically terminated. ` +
-        `\n\n⚠️  SECURITY: Command substitution and certain dangerous patterns may be restricted.` +
+        `\n\n⚠️  SECURITY REQUIREMENTS:\n` +
+        `- At least ONE approved directory must be configured before executing any shell commands\n` +
+        `- Working directory (workdir parameter or process.cwd()) MUST be within allowed directories\n` +
+        `- All file/directory paths in command arguments are validated against allowed directories\n` +
+        `- Command substitution and dangerous patterns may be restricted\n` +
+        `\n` +
+        `If no workdir is specified, the server's current working directory will be used and validated.` +
         approvedCommandsText +
         `\n\nIMPORTANT: Always provide a clear description of what the command does and why it's needed.`,
       inputSchema: zodToJsonSchema(ShellCommandArgsSchema) as ToolInput,
@@ -181,18 +186,41 @@ export async function handleShellTool(
     );
   }
 
-  // Validate working directory if provided
-  let workdir = process.cwd();
-  if (validatedArgs.workdir) {
-    try {
-      workdir = await validatePath(validatedArgs.workdir);
-    } catch (error) {
-      throw new Error(
-        `Invalid working directory: ${validatedArgs.workdir}\n` +
-          `Error: ${error instanceof Error ? error.message : String(error)}\n` +
-          `Working directory must be within allowed directories.`
-      );
-    }
+  // SECURITY FIX: Validate working directory ALWAYS (not just if provided)
+  // This prevents bypass via process.cwd() when workdir is omitted
+  const allowedDirs = getAllowedDirectories();
+  
+  // Require at least one approved directory for shell execution
+  if (allowedDirs.length === 0) {
+    throw new Error(
+      `Access denied: Shell execution requires at least one approved directory.\n` +
+      `No allowed directories are currently configured.\n` +
+      `\n` +
+      `To execute shell commands, you must first configure allowed directories using:\n` +
+      `  1. --approved-folders CLI argument when starting the MCP server, OR\n` +
+      `  2. register_directory tool to add directories at runtime\n` +
+      `\n` +
+      `Example: register_directory with path "C:/path/to/your/project"`
+    );
+  }
+
+  // Always validate working directory against allowed directories
+  let workdir = validatedArgs.workdir || process.cwd();
+  try {
+    workdir = await validatePath(workdir);
+  } catch (error) {
+    throw new Error(
+      `Access denied: Working directory is not within allowed directories.\n` +
+        `Attempted directory: ${workdir}\n` +
+        `Error: ${error instanceof Error ? error.message : String(error)}\n` +
+        `\n` +
+        `Allowed directories:\n` +
+        allowedDirs.map(d => `  - ${d}`).join('\n') +
+        `\n\n` +
+        `To execute commands in this directory:\n` +
+        `  1. Register the directory using register_directory tool, OR\n` +
+        `  2. Specify a workdir parameter within an approved directory`
+    );
   }
 
   // Extract and validate paths from command arguments

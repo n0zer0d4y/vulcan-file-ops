@@ -692,12 +692,16 @@ Execute shell commands with security controls
 
 - `command` (string): Shell command to execute
 - `description` (string, optional): Command purpose
-- `workdir` (string, optional): Working directory (must be within allowed directories)
+- `workdir` (string, optional): Working directory (must be within allowed directories). If not provided, process.cwd() is used and validated
 - `timeout` (number, optional): Timeout in milliseconds (default: 30000)
 
 **Output:** Exit code, stdout, stderr, and execution metadata
 
-**Security:** All file/directory paths in command arguments are automatically extracted and validated against allowed directories. Commands referencing paths outside approved directories are blocked, preventing directory restriction bypasses.
+**Security:** 
+- At least one approved directory must be configured before executing shell commands
+- Working directory (whether explicit or default process.cwd()) is always validated against allowed directories
+- All file/directory paths in command arguments are automatically extracted and validated against allowed directories
+- Commands referencing paths outside approved directories are blocked, preventing directory restriction bypasses
 
 ### Multi-File Edit Examples
 
@@ -855,6 +859,7 @@ This server has been audited against known vulnerabilities:
 - ✅ CVE-2025-54795 (Command Injection) - **PROTECTED**
 - ✅ CVE-2025-53109 (Symlink Attacks) - **PROTECTED**
 - ✅ CVE-2025-53110 (Directory Containment Bypass) - **PROTECTED**
+- ✅ Shell Execution Directory Bypass - **FIXED** (November 2024)
 
 For detailed security analysis, see [Vulnerability Research Findings](docs/VULNERABILITY_RESEARCH_FINDINGS.md).
 
