@@ -1,6 +1,7 @@
 ﻿# Vulcan File Ops MCP Server
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
+[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.n0zer0d4y/vulcan-file-ops)
 ![MCP Dev](https://badge.mcpx.dev?type=dev "MCP Dev")
 [![MCP Server](https://badge.mcpx.dev?type=server "MCP Server")](https://modelcontextprotocol.io)
 [![MCP Server with Tools](https://badge.mcpx.dev?type=server&features=tools "MCP server with tools")](https://modelcontextprotocol.io)
@@ -697,7 +698,8 @@ Execute shell commands with security controls
 
 **Output:** Exit code, stdout, stderr, and execution metadata
 
-**Security:** 
+**Security:**
+
 - At least one approved directory must be configured before executing shell commands
 - Working directory (whether explicit or default process.cwd()) is always validated against allowed directories
 - All file/directory paths in command arguments are automatically extracted and validated against allowed directories
