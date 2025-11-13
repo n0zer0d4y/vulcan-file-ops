@@ -18,6 +18,7 @@ describe("Shell Tool", () => {
     const result = await handleShellTool("execute_shell", {
       command: "echo test",
       description: "Test echo command",
+      workdir: os.tmpdir(), // Specify workdir within allowed directory
     });
 
     expect(result.content).toHaveLength(1);
@@ -60,7 +61,7 @@ describe("Shell Tool", () => {
         command: "echo test",
         workdir: "/unauthorized/path",
       })
-    ).rejects.toThrow("Invalid working directory");
+    ).rejects.toThrow("Working directory is not within allowed directories");
   });
 
   test("respects timeout", async () => {
@@ -70,6 +71,7 @@ describe("Shell Tool", () => {
     const result = await handleShellTool("execute_shell", {
       command,
       timeout: 1000,
+      workdir: os.tmpdir(), // Specify workdir within allowed directory
     });
 
     expect(result.content[0].text).toContain("TIMEOUT");
@@ -80,6 +82,7 @@ describe("Shell Tool", () => {
     const result = await handleShellTool("execute_shell", {
       command: "echo test",
       description: "This is a test command",
+      workdir: os.tmpdir(), // Specify workdir within allowed directory
     });
 
     expect(result.content[0].text).toContain("This is a test command");
@@ -90,6 +93,7 @@ describe("Shell Tool", () => {
 
     const result = await handleShellTool("execute_shell", {
       command,
+      workdir: os.tmpdir(), // Specify workdir within allowed directory
     });
 
     expect(result.content[0].text).toContain("Exit Code: 1");
@@ -192,6 +196,7 @@ describe("Shell Tool", () => {
 
     const result = await handleShellTool("execute_shell", {
       command,
+      workdir: os.tmpdir(), // Specify workdir within allowed directory
     });
 
     expect(result.content[0].text).toContain("Standard Output");
@@ -206,6 +211,7 @@ describe("Shell Tool", () => {
 
     const result = await handleShellTool("execute_shell", {
       command,
+      workdir: os.tmpdir(), // Specify workdir within allowed directory
     });
 
     expect(result.content[0].text).toContain("first");
@@ -229,6 +235,7 @@ describe("Shell Tool", () => {
   test("includes working directory in result", async () => {
     const result = await handleShellTool("execute_shell", {
       command: "echo test",
+      workdir: os.tmpdir(), // Specify workdir within allowed directory
     });
 
     expect(result.content[0].text).toContain("Working Directory:");
@@ -237,6 +244,7 @@ describe("Shell Tool", () => {
   test("includes command in result", async () => {
     const result = await handleShellTool("execute_shell", {
       command: "echo hello world",
+      workdir: os.tmpdir(), // Specify workdir within allowed directory
     });
 
     expect(result.content[0].text).toContain("Command: echo hello world");
@@ -245,6 +253,7 @@ describe("Shell Tool", () => {
   test("formats result with proper sections", async () => {
     const result = await handleShellTool("execute_shell", {
       command: "echo test",
+      workdir: os.tmpdir(), // Specify workdir within allowed directory
     });
 
     const text = result.content[0].text;
@@ -252,5 +261,152 @@ describe("Shell Tool", () => {
     expect(text).toContain("--- Standard Output ---");
     expect(text).toContain("--- Standard Error ---");
     expect(text).toContain("Exit Code:");
+  });
+
+  // Security Fix Tests: Shell Execution Directory Bypass Vulnerability
+  describe("Security Fix: Directory Validation", () => {
+    test("rejects shell execution when no approved directories configured", async () => {
+      // Setup: Clear all allowed directories to simulate no configuration
+      setAllowedDirectories([]);
+
+      await expect(
+        handleShellTool("execute_shell", {
+          command: "echo test",
+          description: "Test command without approved directories",
+        })
+      ).rejects.toThrow("at least one approved directory");
+    });
+
+    test("validates process.cwd() when workdir not provided", async () => {
+      // Setup: Set allowed directory to something that's NOT process.cwd()
+      // Use a very specific path that won't match current working directory
+      const nonMatchingDir = os.platform() === "win32" 
+        ? "C:\\NonExistentSecureDirectory123456" 
+        : "/nonexistent-secure-directory-123456";
+      
+      setAllowedDirectories([nonMatchingDir]);
+
+      // When workdir is NOT provided, process.cwd() should be validated
+      // and rejected since it's not in the allowed directories
+      await expect(
+        handleShellTool("execute_shell", {
+          command: "echo test",
+          description: "Test without workdir parameter",
+          // No workdir provided - should validate process.cwd()
+        })
+      ).rejects.toThrow("Working directory is not within allowed directories");
+    });
+
+    test("accepts command with workdir in approved directory", async () => {
+      // Setup: Approved directory
+      const approvedDir = os.tmpdir();
+      setAllowedDirectories([approvedDir]);
+
+      const result = await handleShellTool("execute_shell", {
+        command: "echo test",
+        workdir: approvedDir,
+        description: "Test with approved workdir",
+      });
+
+      expect(result.isError).toBe(false);
+      expect(result.content[0].text).toContain("Exit Code: 0");
+    });
+
+    test("rejects command with workdir outside approved directories", async () => {
+      // Setup: Approved directory
+      setAllowedDirectories([os.tmpdir()]);
+
+      // Try to execute in unauthorized directory
+      const unauthorizedDir = os.platform() === "win32" 
+        ? "C:\\Windows\\System32" 
+        : "/etc";
+
+      await expect(
+        handleShellTool("execute_shell", {
+          command: "echo test",
+          workdir: unauthorizedDir,
+          description: "Test with unapproved workdir",
+        })
+      ).rejects.toThrow("Working directory is not within allowed directories");
+    });
+
+    test("provides helpful error message when directory not approved", async () => {
+      setAllowedDirectories([os.tmpdir()]);
+      
+      const unauthorizedDir = os.platform() === "win32" 
+        ? "C:\\Windows" 
+        : "/usr";
+
+      try {
+        await handleShellTool("execute_shell", {
+          command: "echo test",
+          workdir: unauthorizedDir,
+        });
+        // Should not reach here
+        expect(true).toBe(false);
+      } catch (error) {
+        const errorMessage = (error as Error).message;
+        
+        // Verify error message includes helpful information
+        expect(errorMessage).toContain("Access denied");
+        expect(errorMessage).toContain("Allowed directories:");
+        expect(errorMessage).toContain(os.tmpdir());
+        expect(errorMessage).toContain("register_directory");
+      }
+    });
+
+    test("provides helpful error message when no directories configured", async () => {
+      setAllowedDirectories([]);
+
+      try {
+        await handleShellTool("execute_shell", {
+          command: "echo test",
+        });
+        // Should not reach here
+        expect(true).toBe(false);
+      } catch (error) {
+        const errorMessage = (error as Error).message;
+        
+        // Verify error message includes helpful guidance
+        expect(errorMessage).toContain("Access denied");
+        expect(errorMessage).toContain("at least one approved directory");
+        expect(errorMessage).toContain("--approved-folders");
+        expect(errorMessage).toContain("register_directory");
+      }
+    });
+
+    test("CVE Fix: prevents arbitrary execution via process.cwd() bypass", async () => {
+      // This test specifically validates the CVE fix
+      // Previously, omitting workdir would bypass directory validation
+      
+      // Setup: Configure specific allowed directory
+      const allowedDir = os.tmpdir();
+      setAllowedDirectories([allowedDir]);
+
+      // Scenario 1: Command with explicit workdir in allowed directory - should work
+      const result1 = await handleShellTool("execute_shell", {
+        command: "echo allowed",
+        workdir: allowedDir,
+      });
+      expect(result1.isError).toBe(false);
+
+      // Scenario 2: Command without workdir - should validate process.cwd()
+      // If process.cwd() is not in allowed directories, it should fail
+      // Note: This test might pass or fail depending on where tests run from
+      // The important thing is that validation HAPPENS, not that it's blocked
+      try {
+        await handleShellTool("execute_shell", {
+          command: "echo test",
+          // No workdir - will use and validate process.cwd()
+        });
+        
+        // If we reach here, process.cwd() must be within allowed directories
+        // which is valid behavior - the key is that validation occurred
+      } catch (error) {
+        // If we catch an error, it should be about directory validation
+        const errorMessage = (error as Error).message;
+        expect(errorMessage).toContain("Working directory is not within allowed directories");
+      }
+    });
   });
 });

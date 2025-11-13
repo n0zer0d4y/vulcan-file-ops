@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2025-11-13
+
+### Security
+
+- CRITICAL: Fixed shell execution directory bypass vulnerability that allowed arbitrary command execution in unapproved directories
+  - Shell commands without explicit workdir parameter now properly validate process.cwd() against allowed directories
+  - All shell executions now require at least one approved directory to be configured
+  - Added mandatory directory validation for both explicit and default working directories
+  - Enhanced error messages with clear guidance for users
+  - This is a breaking change by design for security: users must configure approved directories or provide explicit workdir parameters
+
+### Added
+
+- 7 comprehensive security tests for shell execution directory validation
+- Root Cause Analysis document: local_docs/RCA-Shell-Execution-Directory-Bypass-Vulnerability.md
+- Security fix verification document: local_docs/SECURITY-FIX-VERIFICATION.md
+
+### Changed
+
+- Updated execute_shell tool description to explicitly document security requirements
+- Updated 10+ existing tests to comply with enhanced security model
+
+### Fixed
+
+- Shell execution no longer bypasses directory validation when workdir parameter is omitted
+- Process working directory is now validated against allowed directories in all cases
+
 ## [1.1.2] - 2025-01-12
 
 ### Fixed
