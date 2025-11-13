@@ -386,4 +386,8 @@ test
 prompt
 server.log
 
+# MCP Publisher Tokens
+.mcpregistry_github_token
+.mcpregistry_registry_token
+
 # --- End of .gitignore ---
