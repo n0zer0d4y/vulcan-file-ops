@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] - 2025-11-15
+
+### Added
+
+- Comprehensive security audit documentation suite:
+  - `docs/SNYK_VULNERABILITY_AUDIT_2025.md` - Static analysis audit report from Snyk platform
+    - Validated 5/6 Snyk findings as false positives
+    - Fixed 1 finding (defense-in-depth path validation in rollback function)
+    - Created `.snyk` policy file to suppress false positives with justifications
+  - `docs/CVE_MANUAL_AUDIT_2025-11-04.md` - Manual CVE pattern analysis audit
+    - CVE-2025-54794/54795 pattern research and mitigation validation
+    - Identified and fixed critical `make_directory` vulnerability
+  - `docs/SHELL_COMMAND_AUDIT_2025-11-04.md` - Shell command directory bypass audit (retrospective)
+    - Documents November 2024 security fix for path validation in shell command arguments
+    - 419 lines of comprehensive test coverage
+  - `docs/SECURITY_TEST_SUMMARY.md` - Security test coverage documentation
+    - 2000+ lines of security-focused tests in `src/tests/`
+    - Explicit CVE tests for CVE-2025-54794, CVE-2025-54795, CVE-2025-53109
+- Security annotations and JSDoc comments in `src/tools/write-tools.ts` for static analysis tools
+
+### Changed
+
+- Reorganized vulnerability documentation with unique, descriptive filenames:
+  - Renamed `docs/VULNERABILITY_RESEARCH_FINDINGS.md` → `docs/CVE_MANUAL_AUDIT_2025-11-04.md`
+  - Renamed `local_docs/VULNERABILITY_RESEARCH_FINDINGS.md` → `local_docs/CVE_MANUAL_AUDIT_2025-11-03_DRAFT.md`
+  - Updated dates in audit reports to reflect actual creation/audit dates (Nov 3-4, 2025)
+- Enhanced README.md Security Audit section with comprehensive audit report references
+  - Added "Latest Security Audits" section linking to all audit reports
+  - Updated CVE Protection Status with current security posture
+  - Clarified shell command directory bypass as fixed (November 2024)
+
+### Security
+
+- Added defense-in-depth path validation to `performRollback()` function in `write-tools.ts`
+  - Re-validates paths before rollback operations
+  - Protects against edge cases where allowed directories might change during multi-file operations
+
+### Removed
+
+- Deleted duplicate `VULNERABILITY_RESEARCH_FINDINGS.md` files from both `docs/` and `local_docs/` after proper renaming
+
 ## [1.1.4] - 2025-11-13
 
 ### Changed
