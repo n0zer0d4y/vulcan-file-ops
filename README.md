@@ -855,7 +855,9 @@ This MCP server implements enterprise-grade security controls to protect against
 
 ### Security Audit
 
-This server has been audited against known vulnerabilities:
+This server has been comprehensively audited against known vulnerabilities and static analysis findings:
+
+**CVE Protection Status:**
 
 - ✅ CVE-2025-54794 (Path Restriction Bypass) - **FIXED**
 - ✅ CVE-2025-54795 (Command Injection) - **PROTECTED**
@@ -863,7 +865,34 @@ This server has been audited against known vulnerabilities:
 - ✅ CVE-2025-53110 (Directory Containment Bypass) - **PROTECTED**
 - ✅ Shell Execution Directory Bypass - **FIXED** (November 2024)
 
-For detailed security analysis, see [Vulnerability Research Findings](docs/VULNERABILITY_RESEARCH_FINDINGS.md).
+**Latest Security Audits:**
+
+- 📋 [Snyk Vulnerability Audit Report - November 2025](docs/SNYK_VULNERABILITY_AUDIT_2025.md)
+  - **Status**: 5/6 Snyk findings validated as false positives, 1 finding fixed
+  - **Risk Level**: LOW - Comprehensive path traversal protection verified
+  - **Static Analysis**: Snyk false positive rate 83% due to custom validation not recognized
+  - **Test Coverage**: 2000+ lines of security tests validate all protection measures
+- 📋 [CVE Manual Audit - November 2025](docs/CVE_MANUAL_AUDIT_2025-11-04.md)
+  - **Status**: Critical `make_directory` vulnerability identified and fixed
+  - **Focus**: CVE-2025-54794/54795 pattern analysis and mitigation strategies
+  - **Date**: November 4, 2025 (Manual CVE Research)
+- 📋 [Shell Command Directory Bypass Audit - November 2025](docs/SHELL_COMMAND_AUDIT_2025-11-04.md)
+  - **Status**: ✅ Fixed November 2024 (Retrospective documentation)
+  - **Issue**: Shell commands previously could access files outside approved directories via absolute paths
+  - **Severity**: HIGH (CVSS ~7.5) - Path traversal via command arguments
+  - **Fix Status**: ✅ FIXED - Path extraction and validation implemented
+  - **Test Coverage**: 419 lines of comprehensive tests, all passing
+- 📋 [Security Test Coverage Summary](docs/SECURITY_TEST_SUMMARY.md)
+  - **Test Suite**: 2000+ lines of security-focused tests in `src/tests/`
+  - **CVE Tests**: Explicit tests for CVE-2025-54794, CVE-2025-54795, CVE-2025-53109
+  - **Coverage**: Path traversal, symlinks (129+ cases), command injection, shell bypass
+
+**Security Architecture:**
+
+- Multi-layer path validation (canonical resolution, boundary checking, symlink protection)
+- Defense-in-depth with atomic operations and race condition prevention
+- Directory whitelisting with prefix collision protection
+- Comprehensive security annotations for static analysis tools
 
 ### Supported File Types
 
