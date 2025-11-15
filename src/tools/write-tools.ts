@@ -51,6 +51,10 @@ interface EditFileResults {
 /**
  * Helper function to write file content based on file extension
  * Supports HTML conversion for rich formatting in PDF and DOCX files
+ *
+ * @security Path must be pre-validated via validatePath() before calling this function
+ * @param validPath - VALIDATED path (must have passed through validatePath())
+ * @param content - File content to write
  */
 async function writeFileBasedOnExtension(
   validPath: string,
@@ -70,11 +74,13 @@ async function writeFileBasedOnExtension(
         title: fileTitle,
         author: "vulcan-file-ops",
       });
+      // SECURITY: validPath pre-validated by validatePath() - safe from path traversal (CWE-23)
       await fs.writeFile(validPath, pdfBuffer);
     } else {
       // Fallback to simple text PDF for plain text
       const { createSimpleTextPDF } = await import("../utils/pdf-writer.js");
       const pdfBuffer = await createSimpleTextPDF(content);
+      // SECURITY: validPath pre-validated by validatePath() - safe from path traversal (CWE-23)
       await fs.writeFile(validPath, pdfBuffer);
     }
   } else if (ext === ".docx") {
@@ -84,24 +90,37 @@ async function writeFileBasedOnExtension(
         title: fileTitle,
         author: "vulcan-file-ops",
       });
+      // SECURITY: validPath pre-validated by validatePath() - safe from path traversal (CWE-23)
       await fs.writeFile(validPath, docxBuffer);
     } else {
       // Fallback to simple text DOCX for plain text
       const { createSimpleDOCX } = await import("../utils/docx-writer.js");
       const docxBuffer = await createSimpleDOCX(content);
+      // SECURITY: validPath pre-validated by validatePath() - safe from path traversal (CWE-23)
       await fs.writeFile(validPath, docxBuffer);
     }
   } else {
     // Regular text file
+    // SECURITY: validPath pre-validated by validatePath() - writeFileContent adds additional atomic write protection
     await writeFileContent(validPath, content);
   }
 }
 
+/**
+ * Process a single file edit request with validation
+ *
+ * @security All paths validated via validatePath() before file operations
+ * @param request - Edit request with path and edits to apply
+ * @param failOnAmbiguous - Whether to fail on ambiguous matches
+ * @returns Edit result with success status and diff
+ */
 async function processFileEditRequest(
   request: EditFileRequest,
   failOnAmbiguous: boolean = true
 ): Promise<EditFileResult> {
   try {
+    // SECURITY: Path validated against allowed directories, symlink targets checked,
+    // prevents CVE-2025-54794 (prefix collision), CVE-2025-53109 (symlink attacks)
     const validPath = await validatePath(request.path);
     const result = await applyFileEdits(
       validPath,
@@ -243,7 +262,11 @@ async function performRollback(
   for (const item of rollbackData.reverse()) {
     // Rollback in reverse order
     try {
-      await writeFileContent(item.path, item.originalContent);
+      // Security: Re-validate path before rollback to ensure it's still within allowed directories
+      // Defense-in-depth: Even though paths were validated during edit, re-validate during rollback
+      // to protect against edge cases where allowed directories might have changed
+      const validPath = await validatePath(item.path);
+      await writeFileContent(validPath, item.originalContent);
     } catch (rollbackError) {
       // Log rollback failure but don't throw - we want to attempt all rollbacks
       console.error(`Failed to rollback ${item.path}: ${rollbackError}`);
@@ -384,6 +407,12 @@ export async function handleWriteTool(name: string, args: any) {
       if (!parsed.success) {
         throw new Error(`Invalid arguments for write_file: ${parsed.error}`);
       }
+      // SECURITY: validatePath() enforces:
+      // 1. Canonical path resolution (path.resolve + path.normalize)
+      // 2. Allowed directory boundary checking (isPathWithinAllowedDirectories)
+      // 3. Symlink resolution and target validation (fs.realpath)
+      // 4. Parent directory validation for new files
+      // Prevents: CWE-23 (Path Traversal), CVE-2025-54794, CVE-2025-53109, CVE-2025-53110
       const validPath = await validatePath(parsed.data.path);
       await writeFileBasedOnExtension(validPath, parsed.data.content);
       return {
