@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] - 2025-11-16
+
+### Fixed
+
+- README.md Configuration Examples: Corrected all `--approved-folders` examples to use separate array elements instead of comma-separated strings within quotes. This fixes setup failures for users with spaces in directory paths.
+  - Before: `"C:/Users/username/projects,C:/Users/username/documents"` (breaks with spaces)
+  - After: `"C:/Users/username/projects", "C:/Users/username/documents"` (works with spaces)
+- Added clear guidance for paths containing spaces in MCP configuration
+
+### Changed
+
+- Updated all README configuration examples to use the correct array element format for better user experience
+
 ## [1.1.5] - 2025-11-15
 
 ### Added

@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "io.github.n0zer0d4y/vulcan-file-ops",
   "description": "MCP server for AI assistants: read, write, edit, and manage files securely on local filesystem.",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "packages": [
     {
       "registryType": "npm",

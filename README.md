@@ -209,7 +209,8 @@ Pre-configure specific directories for immediate access on server start:
       "args": [
         "@n0zer0d4y/vulcan-file-ops",
         "--approved-folders",
-        "/Users/username/projects,/Users/username/documents"
+        "/Users/username/projects",
+        "/Users/username/documents"
       ]
     }
   }
@@ -226,7 +227,8 @@ Pre-configure specific directories for immediate access on server start:
       "args": [
         "@n0zer0d4y/vulcan-file-ops",
         "--approved-folders",
-        "C:/Users/username/projects,C:/Users/username/documents"
+        "C:/Users/username/projects",
+        "C:/Users/username/documents"
       ]
     }
   }
@@ -244,7 +246,8 @@ For users running from a cloned repository (after `npm run build`):
       "command": "vulcan-file-ops",
       "args": [
         "--approved-folders",
-        "/Users/username/projects,/Users/username/documents"
+        "/Users/username/projects",
+        "/Users/username/documents"
       ]
     }
   }
@@ -360,7 +363,8 @@ All configuration options can be combined:
       "args": [
         "@n0zer0d4y/vulcan-file-ops",
         "--approved-folders",
-        "C:/Users/username/projects,C:/Users/username/documents",
+        "C:/Users/username/projects",
+        "C:/Users/username/documents",
         "--ignored-folders",
         "node_modules,dist,.git",
         "--approved-commands",
@@ -385,7 +389,8 @@ All configuration options can be combined:
       "args": [
         "@n0zer0d4y/vulcan-file-ops",
         "--approved-folders",
-        "/Users/username/projects,/Users/username/documents",
+        "/Users/username/projects",
+        "/Users/username/documents",
         "--ignored-folders",
         "node_modules,dist,.git",
         "--approved-commands",
@@ -411,7 +416,8 @@ For users running from a cloned repository (after `npm run build`):
       "command": "vulcan-file-ops",
       "args": [
         "--approved-folders",
-        "/Users/username/projects,/Users/username/documents",
+        "/Users/username/projects",
+        "/Users/username/documents",
         "--ignored-folders",
         "node_modules,dist,.git",
         "--approved-commands",
