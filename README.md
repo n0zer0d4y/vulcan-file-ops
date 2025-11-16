@@ -61,7 +61,7 @@ This enhanced implementation provides:
 - **Advanced File Editing**: Pattern-based modifications with flexible matching and diff preview
 - **Flexible Reading Modes**: Full file, head/tail, or arbitrary line ranges
 - **Image Vision Support**: Attach images for AI analysis and description
-- **Directory Filtering**: Exclude unwanted folders (node_modules, dist, .git) from listings
+- **Directory Filtering**: Exclude unwanted folders (node_modules, dist, .git) from listings as list_directory tool can bloat server output if these types folders, normally gitignored, are included
 - **Selective Tool Activation**: Enable only specific tools or tool categories
 - **High Performance**: Optimized search algorithms with smart recursion detection
 - **Security Controls**: Path validation, access restrictions, and shell command approval
