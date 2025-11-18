@@ -34,7 +34,7 @@ describe("Shell Tool", () => {
         command: "sudo apt install",
         requiresApproval: false,
       })
-    ).rejects.toThrow("Command requires approval");
+    ).rejects.toThrow("Command not in approved list");
   });
 
   test("rejects unapproved command with requiresApproval flag", async () => {
@@ -43,7 +43,7 @@ describe("Shell Tool", () => {
         command: "rm -rf /tmp/test",
         requiresApproval: true,
       })
-    ).rejects.toThrow("Command requires approval");
+    ).rejects.toThrow("Command not in approved list");
   });
 
   test("rejects dangerous command even if root is approved", async () => {
@@ -52,7 +52,7 @@ describe("Shell Tool", () => {
         command: "rm -rf /tmp/test",
         requiresApproval: false,
       })
-    ).rejects.toThrow("Command requires approval");
+    ).rejects.toThrow("Command not in approved list");
   });
 
   test("validates working directory", async () => {
@@ -65,6 +65,10 @@ describe("Shell Tool", () => {
   });
 
   test("respects timeout", async () => {
+    // Add platform-specific commands to approved list for this test
+    const sleepCmd = os.platform() === "win32" ? "Start-Sleep" : "sleep";
+    initializeShellTool(["ls", "pwd", "echo", "cat", sleepCmd]);
+
     const command =
       os.platform() === "win32" ? "Start-Sleep -Seconds 5" : "sleep 5";
 
@@ -89,6 +93,9 @@ describe("Shell Tool", () => {
   });
 
   test("reports non-zero exit codes as errors", async () => {
+    // Add 'exit' to approved commands for this test
+    initializeShellTool(["ls", "pwd", "echo", "cat", "exit"]);
+    
     const command = os.platform() === "win32" ? "exit 1" : "exit 1";
 
     const result = await handleShellTool("execute_shell", {
@@ -110,46 +117,46 @@ describe("Shell Tool", () => {
 
   test("blocks command injection via approved commands (CVE-2025-54795 pattern)", async () => {
     // This test verifies that command injection attempts through approved commands
-    // are blocked when dangerous commands are detected
+    // are blocked when unapproved commands are detected in the chain
     // Pattern: echo test; rm -rf /tmp; echo done
-    // Even though echo is approved, the dangerous rm command should be detected
+    // Even though echo is approved, the unapproved rm/del command should be blocked
     if (os.platform() !== "win32") {
-      // On Unix, test with rm -rf which matches dangerous patterns
+      // On Unix, test with rm -rf (not in approved list)
       const injectedCommand = "echo test; rm -rf /tmp/*; echo done";
 
-      // Should be rejected because rm -rf matches dangerous patterns
-      await expect(
-        handleShellTool("execute_shell", {
-          command: injectedCommand,
-          requiresApproval: false, // Even without explicit approval, dangerous commands are blocked
-        })
-      ).rejects.toThrow("Command requires approval");
-    } else {
-      // On Windows, test with del /s which matches dangerous patterns
-      const injectedCommand = "echo test; del /s /q C:\\tmp\\*; echo done";
-
-      // Should be rejected because del /s matches dangerous patterns
+      // Should be rejected because rm is not in approved list
       await expect(
         handleShellTool("execute_shell", {
           command: injectedCommand,
           requiresApproval: false,
         })
-      ).rejects.toThrow("Command requires approval");
+      ).rejects.toThrow("Command not in approved list");
+    } else {
+      // On Windows, test with del (not in approved list)
+      const injectedCommand = "echo test; del /s /q C:\\tmp\\*; echo done";
+
+      // Should be rejected because del is not in approved list
+      await expect(
+        handleShellTool("execute_shell", {
+          command: injectedCommand,
+          requiresApproval: false,
+        })
+      ).rejects.toThrow("Command not in approved list");
     }
   });
 
   test("blocks unapproved commands when requiresApproval is true", async () => {
-    // This test verifies that unapproved commands are blocked when requiresApproval is set
+    // This test verifies that unapproved commands are blocked regardless of requiresApproval flag
     const injectedCommand = "echo test; unapproved_command; echo done";
 
     // Should be rejected because extractRootCommands will detect "unapproved_command"
-    // which is not in the approved list, and requiresApproval is true
+    // which is not in the approved list
     await expect(
       handleShellTool("execute_shell", {
         command: injectedCommand,
         requiresApproval: true,
       })
-    ).rejects.toThrow("Command requires approval");
+    ).rejects.toThrow("Command not in approved list");
   });
 
   test("rejects empty command", async () => {
@@ -189,6 +196,11 @@ describe("Shell Tool", () => {
   });
 
   test("captures both stdout and stderr", async () => {
+    // Add Write-Error to approved commands for Windows test
+    if (os.platform() === "win32") {
+      initializeShellTool(["ls", "pwd", "echo", "cat", "Write-Error"]);
+    }
+    
     const command =
       os.platform() === "win32"
         ? "echo stdout; Write-Error 'stderr'"
@@ -229,7 +241,7 @@ describe("Shell Tool", () => {
       handleShellTool("execute_shell", {
         command,
       })
-    ).rejects.toThrow("Command requires approval");
+    ).rejects.toThrow("Command not in approved list");
   });
 
   test("includes working directory in result", async () => {
@@ -406,6 +418,267 @@ describe("Shell Tool", () => {
         // If we catch an error, it should be about directory validation
         const errorMessage = (error as Error).message;
         expect(errorMessage).toContain("Working directory is not within allowed directories");
+      }
+    });
+  });
+
+  // Security Fix Tests: Command Approval Bypass Vulnerability
+  describe("Security Fix: Strict Command Whitelist Enforcement", () => {
+    beforeEach(() => {
+      // Initialize with approved commands
+      initializeShellTool(["ls", "pwd", "echo", "cat"]);
+      setAllowedDirectories([os.tmpdir()]);
+    });
+
+    test("blocks unapproved non-dangerous command (whoami)", async () => {
+      await expect(
+        handleShellTool("execute_shell", {
+          command: "whoami",
+          workdir: os.tmpdir(),
+        })
+      ).rejects.toThrow("Command not in approved list");
+    });
+
+    test("blocks unapproved non-dangerous command (hostname)", async () => {
+      await expect(
+        handleShellTool("execute_shell", {
+          command: "hostname",
+          workdir: os.tmpdir(),
+        })
+      ).rejects.toThrow("Command not in approved list");
+    });
+
+    test("blocks Windows dir command (not in approved list)", async () => {
+      if (os.platform() === "win32") {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: "dir",
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
+      }
+    });
+
+    test("blocks Windows type command (not in approved list)", async () => {
+      if (os.platform() === "win32") {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: "type test.txt",
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
+      }
+    });
+
+    test("blocks Windows copy command (not in approved list)", async () => {
+      if (os.platform() === "win32") {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: "copy file1.txt file2.txt",
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
+      }
+    });
+
+    test("blocks Windows move command (not in approved list)", async () => {
+      if (os.platform() === "win32") {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: "move file1.txt file2.txt",
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
+      }
+    });
+
+    test("blocks Windows ren command (not in approved list)", async () => {
+      if (os.platform() === "win32") {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: "ren file1.txt file2.txt",
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
+      }
+    });
+
+    test("blocks Windows del command without /s flag (not in approved list)", async () => {
+      if (os.platform() === "win32") {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: "del test.txt",
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
+      }
+    });
+
+    test("blocks Windows mkdir command (not in approved list)", async () => {
+      if (os.platform() === "win32") {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: "mkdir newdir",
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
+      }
+    });
+
+    test("blocks Windows rmdir command (not in approved list)", async () => {
+      if (os.platform() === "win32") {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: "rmdir emptydir",
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
+      }
+    });
+
+    test("blocks Windows ipconfig command (not in approved list)", async () => {
+      if (os.platform() === "win32") {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: "ipconfig",
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
+      }
+    });
+
+    test("allows approved commands to execute", async () => {
+      const result = await handleShellTool("execute_shell", {
+        command: "echo approved",
+        workdir: os.tmpdir(),
+      });
+
+      expect(result.isError).toBe(false);
+      expect(result.content[0].text).toContain("approved");
+    });
+
+    test("allows multiple approved commands in chain", async () => {
+      const command =
+        os.platform() === "win32"
+          ? "echo first; echo second"
+          : "echo first && echo second";
+
+      const result = await handleShellTool("execute_shell", {
+        command,
+        workdir: os.tmpdir(),
+      });
+
+      expect(result.isError).toBe(false);
+      expect(result.content[0].text).toContain("first");
+    });
+
+    test("error message includes list of approved commands", async () => {
+      try {
+        await handleShellTool("execute_shell", {
+          command: "whoami",
+          workdir: os.tmpdir(),
+        });
+        fail("Should have thrown error");
+      } catch (error) {
+        const errorMessage = (error as Error).message;
+        expect(errorMessage).toContain("Approved commands:");
+        expect(errorMessage).toContain("ls");
+        expect(errorMessage).toContain("pwd");
+        expect(errorMessage).toContain("echo");
+        expect(errorMessage).toContain("cat");
+      }
+    });
+
+    test("error message identifies specific unapproved command", async () => {
+      try {
+        await handleShellTool("execute_shell", {
+          command: "whoami",
+          workdir: os.tmpdir(),
+        });
+        fail("Should have thrown error");
+      } catch (error) {
+        const errorMessage = (error as Error).message;
+        expect(errorMessage).toContain("Unapproved commands: whoami");
+        expect(errorMessage).toContain("Access denied");
+      }
+    });
+
+    test("blocks unapproved command even with requiresApproval=false", async () => {
+      // This is the critical bug fix test
+      // Previously, requiresApproval=false would allow execution
+      await expect(
+        handleShellTool("execute_shell", {
+          command: "whoami",
+          requiresApproval: false,
+          workdir: os.tmpdir(),
+        })
+      ).rejects.toThrow("Command not in approved list");
+    });
+
+    test("blocks dangerous pattern on approved command without explicit approval", async () => {
+      // Add 'rm' to approved commands
+      initializeShellTool(["ls", "pwd", "echo", "cat", "rm"]);
+
+      // 'rm' is approved, but 'rm -rf' is dangerous and requires explicit approval
+      await expect(
+        handleShellTool("execute_shell", {
+          command: "rm -rf /tmp/test",
+          requiresApproval: false, // No explicit approval
+          workdir: os.tmpdir(),
+        })
+      ).rejects.toThrow("Dangerous command pattern detected");
+    });
+
+    test("allows dangerous pattern on approved command with explicit approval", async () => {
+      // Add platform-specific delete command to approved commands
+      const deleteCmd = os.platform() === "win32" ? "del" : "rm";
+      initializeShellTool(["ls", "pwd", "echo", "cat", deleteCmd]);
+
+      // Create a test file to delete
+      const testFile = `${os.tmpdir()}/test-delete-${Date.now()}.txt`;
+      require("fs").writeFileSync(testFile, "test");
+
+      // Delete command is approved and requiresApproval=true, should work
+      const command = os.platform() === "win32" ? `del ${testFile}` : `rm ${testFile}`;
+      const result = await handleShellTool("execute_shell", {
+        command,
+        requiresApproval: true,
+        workdir: os.tmpdir(),
+      });
+
+      // Command is approved with explicit approval, should succeed
+      expect(result.isError).toBe(false);
+    });
+
+    test("regression: all examples from RCA should now be blocked", async () => {
+      // Reset to the exact approved list from the RCA
+      initializeShellTool(["npm", "node", "git", "ls", "pwd", "cat", "echo"]);
+
+      const unapprovedCommands = [
+        "whoami",
+        "hostname",
+        ...(os.platform() === "win32"
+          ? [
+              "dir",
+              "type test.txt",
+              "copy a.txt b.txt",
+              "move a.txt b.txt",
+              "ren a.txt b.txt",
+              "del test.txt",
+              "mkdir newdir",
+              "rmdir olddir",
+              "ipconfig",
+            ]
+          : []),
+      ];
+
+      for (const cmd of unapprovedCommands) {
+        await expect(
+          handleShellTool("execute_shell", {
+            command: cmd,
+            workdir: os.tmpdir(),
+          })
+        ).rejects.toThrow("Command not in approved list");
       }
     });
   });

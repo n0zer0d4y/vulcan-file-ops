@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.7] - 2025-11-18
+
+### Security
+
+- **CRITICAL**: Fixed command approval bypass vulnerability in `execute_shell` tool
+  - Previously, unapproved commands could execute if they didn't match dangerous patterns and `requiresApproval` was not set
+  - Now enforces strict whitelist: ALL commands must be in `--approved-commands` list to execute
+  - Affected commands that were incorrectly allowed: `dir`, `whoami`, `ipconfig`, `type`, `copy`, `move`, `ren`, `del`, `mkdir`, `rmdir`
+  - Added defense-in-depth: dangerous patterns now checked even on approved commands
+  - Enhanced error messages showing approved vs unapproved commands with helpful guidance
+
+### Added
+
+- 19 comprehensive security tests for strict command whitelist enforcement
+  - Tests for unapproved non-dangerous commands (whoami, hostname)
+  - Tests for Windows-specific commands (dir, type, copy, move, ren, del, mkdir, rmdir, ipconfig)
+  - Regression tests ensuring all vulnerability examples are blocked
+  - Defense-in-depth tests for dangerous patterns on approved commands
+
+### Changed
+
+- Updated 9 existing shell-tool tests to reflect new strict approval logic
+- Updated error messages from "Command requires approval" to "Command not in approved list"
+- Shell command path validation tests now include all necessary commands in approved list
+
+### Fixed
+
+- `execute_shell` tool now properly blocks ALL unapproved commands regardless of `requiresApproval` parameter
+- Closed security bypass where unapproved commands executed with default `requiresApproval=false`
+
 ## [1.1.6] - 2025-11-16
 
 ### Fixed
