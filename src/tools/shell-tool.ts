@@ -164,43 +164,51 @@ export async function handleShellTool(
     (cmd) => approvedCommands.has(cmd) || alwaysApprovedCommands.has(cmd)
   );
 
-  // Check for dangerous patterns
-  const isDangerous = isDangerousCommand(validatedArgs.command);
-
-  if (!allApproved && (validatedArgs.requiresApproval || isDangerous)) {
+  // SECURITY FIX: Block ALL unapproved commands immediately
+  // Previously, commands were only blocked if (!allApproved && (requiresApproval || isDangerous))
+  // This allowed unapproved non-dangerous commands to execute by default
+  if (!allApproved) {
     const unapprovedCommands = rootCommands.filter(
       (cmd) => !approvedCommands.has(cmd) && !alwaysApprovedCommands.has(cmd)
     );
 
+    const approvedList = Array.from(approvedCommands).join(", ");
     throw new Error(
-      `Command requires approval. Unapproved commands: ${unapprovedCommands.join(
-        ", "
-      )}\n` +
+      `Access denied: Command not in approved list.\n` +
+        `Unapproved commands: ${unapprovedCommands.join(", ")}\n` +
+        `Command: ${validatedArgs.command}\n\n` +
+        `Approved commands: ${approvedList || "(none configured)"}\n\n` +
+        `To execute this command, add it to --approved-commands configuration.`
+    );
+  }
+
+  // SECURITY: Check dangerous patterns even for approved commands
+  // This provides defense-in-depth against accidentally approving dangerous commands
+  const isDangerous = isDangerousCommand(validatedArgs.command);
+  if (isDangerous && !validatedArgs.requiresApproval) {
+    throw new Error(
+      `⚠️  Dangerous command pattern detected.\n` +
         `Command: ${validatedArgs.command}\n` +
-        `${
-          isDangerous
-            ? "⚠️  Warning: This command matches dangerous patterns\n"
-            : ""
-        }` +
-        `To approve, add these commands to --approved-commands or .env configuration.`
+        `This command requires explicit approval.\n` +
+        `Set requiresApproval: true in the command arguments to proceed.`
     );
   }
 
   // SECURITY FIX: Validate working directory ALWAYS (not just if provided)
   // This prevents bypass via process.cwd() when workdir is omitted
   const allowedDirs = getAllowedDirectories();
-  
+
   // Require at least one approved directory for shell execution
   if (allowedDirs.length === 0) {
     throw new Error(
       `Access denied: Shell execution requires at least one approved directory.\n` +
-      `No allowed directories are currently configured.\n` +
-      `\n` +
-      `To execute shell commands, you must first configure allowed directories using:\n` +
-      `  1. --approved-folders CLI argument when starting the MCP server, OR\n` +
-      `  2. register_directory tool to add directories at runtime\n` +
-      `\n` +
-      `Example: register_directory with path "C:/path/to/your/project"`
+        `No allowed directories are currently configured.\n` +
+        `\n` +
+        `To execute shell commands, you must first configure allowed directories using:\n` +
+        `  1. --approved-folders CLI argument when starting the MCP server, OR\n` +
+        `  2. register_directory tool to add directories at runtime\n` +
+        `\n` +
+        `Example: register_directory with path "C:/path/to/your/project"`
     );
   }
 
@@ -215,7 +223,7 @@ export async function handleShellTool(
         `Error: ${error instanceof Error ? error.message : String(error)}\n` +
         `\n` +
         `Allowed directories:\n` +
-        allowedDirs.map(d => `  - ${d}`).join('\n') +
+        allowedDirs.map((d) => `  - ${d}`).join("\n") +
         `\n\n` +
         `To execute commands in this directory:\n` +
         `  1. Register the directory using register_directory tool, OR\n` +
@@ -225,21 +233,24 @@ export async function handleShellTool(
 
   // Extract and validate paths from command arguments
   try {
-    const extractedPaths = extractPathsFromCommand(validatedArgs.command, workdir);
-    
+    const extractedPaths = extractPathsFromCommand(
+      validatedArgs.command,
+      workdir
+    );
+
     if (extractedPaths.length > 0) {
       const allowedDirs = getAllowedDirectories();
-      
+
       // If no allowed directories are configured, block all paths for security
       if (allowedDirs.length === 0) {
         throw new Error(
           `Access denied: Command contains paths but no allowed directories are configured.\n` +
-          `Extracted paths:\n` +
-          extractedPaths.map(p => `  - ${p}`).join('\n') +
-          `\n\nPlease configure allowed directories using --approved-folders or register_directory tool.`
+            `Extracted paths:\n` +
+            extractedPaths.map((p) => `  - ${p}`).join("\n") +
+            `\n\nPlease configure allowed directories using --approved-folders or register_directory tool.`
         );
       }
-      
+
       // Validate each extracted path
       const invalidPaths: string[] = [];
       for (const extractedPath of extractedPaths) {
@@ -247,27 +258,29 @@ export async function handleShellTool(
           invalidPaths.push(extractedPath);
         }
       }
-      
+
       if (invalidPaths.length > 0) {
         throw new Error(
           `Access denied: Command contains paths outside allowed directories:\n` +
-          invalidPaths.map(p => `  - ${p}`).join('\n') +
-          `\n\nAllowed directories:\n` +
-          allowedDirs.map(d => `  - ${d}`).join('\n') +
-          `\n\nTo access these paths, register their parent directories using register_directory tool.`
+            invalidPaths.map((p) => `  - ${p}`).join("\n") +
+            `\n\nAllowed directories:\n` +
+            allowedDirs.map((d) => `  - ${d}`).join("\n") +
+            `\n\nTo access these paths, register their parent directories using register_directory tool.`
         );
       }
     }
   } catch (error) {
     // If path extraction fails, be conservative and block
     // (better to block than allow potentially unsafe commands)
-    if (error instanceof Error && error.message.includes('Access denied')) {
+    if (error instanceof Error && error.message.includes("Access denied")) {
       throw error;
     }
     // For extraction errors, block the command to be safe
     throw new Error(
-      `Path validation failed: ${error instanceof Error ? error.message : String(error)}\n` +
-      `Command blocked for security. Please ensure all paths in the command are within allowed directories.`
+      `Path validation failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n` +
+        `Command blocked for security. Please ensure all paths in the command are within allowed directories.`
     );
   }
 

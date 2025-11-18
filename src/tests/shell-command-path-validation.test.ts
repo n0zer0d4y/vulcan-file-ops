@@ -24,8 +24,10 @@ describe("Shell Command Path Validation", () => {
       "type",
       "dir",
       "Get-Content",
-      "ls",
-      "pwd",
+      "Get-Date",
+      "$env:USERNAME",
+      "date",
+      "whoami",
     ]);
     setAllowedDirectories([allowedDir]);
   });
