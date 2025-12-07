@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-12-07
+
+### Added
+
+- Automatic parent directory creation for write tools:
+  - `write_file` now detects when the target file's parent directory does not exist and, if the path is within approved directories, creates the full directory chain before writing
+  - `write_multiple_files` now validates all requested paths and automatically creates any missing parent directories within approved directories before performing concurrent writes
+  - This removes the need for the model to call `make_directory` explicitly before writing into new subdirectories, reducing round trips and tool calls
+- New `ValidatePathOptions` support for `validatePath` with `createParentIfMissing` flag:
+  - Optional flag that instructs `validatePath` to create missing parent directories, subject to strict allowed-directory and symlink safety checks
+  - Designed specifically for write operations; read/search tools continue to validate paths without side effects
+- Comprehensive test coverage for the new behavior:
+  - Unit tests for `validatePath` covering:
+    - Single-level and multi-level directory creation within allowed roots
+    - Rejection of paths outside allowed directories even when `createParentIfMissing` is true
+    - Handling of race conditions where directories are created between checks
+    - Defensive behavior when an expected directory segment is actually a file
+    - Symlink interactions to ensure created directories do not escape approved roots
+  - Integration tests for:
+    - `write_file` writing into deep, initially non-existent directory trees
+    - `write_multiple_files` writing multiple files into separate, initially non-existent directory trees
+    - Ensuring multi-file writes still fail cleanly when any path is outside approved directories
+
+### Changed
+
+- `handleWriteTool` implementation for `write_file` and `write_multiple_files` now opts into `validatePath(path, { createParentIfMissing: true })` for write operations only, preserving existing behavior for all other tools
+- Internal path-validation logic refactored to centralize secure directory creation semantics in `validatePath`, ensuring:
+  - Normalization and allowed-directory checks are performed before any directory creation
+  - Each created directory is validated with `realpath` to stay inside allowed roots
+  - Non-directory collisions and unsafe symlink targets are rejected with clear error messages
+
 ## [1.1.7] - 2025-11-18
 
 ### Security

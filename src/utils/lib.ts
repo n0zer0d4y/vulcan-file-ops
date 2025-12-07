@@ -166,7 +166,7 @@ export function detectLineEnding(content: string): "\r\n" | "\n" {
 // Calculate diff statistics
 function calculateDiffStats(
   original: string,
-  modified: string
+  modified: string,
 ): {
   added: number;
   removed: number;
@@ -201,7 +201,7 @@ function formatDetailedDiff(
   original: string,
   modified: string,
   filePath: string,
-  results: MatchResult[]
+  results: MatchResult[],
 ): string {
   let output = "";
 
@@ -294,7 +294,7 @@ function formatDetailedDiff(
 export function createUnifiedDiff(
   originalContent: string,
   newContent: string,
-  filepath: string = "file"
+  filepath: string = "file",
 ): string {
   // Ensure consistent line endings for diff
   const normalizedOriginal = normalizeLineEndings(originalContent);
@@ -306,12 +306,124 @@ export function createUnifiedDiff(
     normalizedOriginal,
     normalizedNew,
     "original",
-    "modified"
+    "modified",
   );
 }
 
 // Security & Validation Functions
-export async function validatePath(requestedPath: string): Promise<string> {
+export interface ValidatePathOptions {
+  /**
+   * When true, validatePath will attempt to create any missing parent
+   * directories for the requested path, as long as they are within
+   * the configured allowedDirectories.
+   *
+   * This is intended for write operations only. Read/search tools
+   * should use the default behavior (no directory creation).
+   */
+  createParentIfMissing?: boolean;
+}
+
+async function ensureParentDirectoryExists(
+  absolutePath: string,
+): Promise<void> {
+  const parentDir = path.dirname(absolutePath);
+
+  // Fast path: if parentDir already exists, let the existing logic handle it
+  try {
+    const realParentPath = await fs.realpath(parentDir);
+    const normalizedParent = normalizePath(realParentPath);
+    if (!isPathWithinAllowedDirectories(normalizedParent, allowedDirectories)) {
+      throw new Error(
+        `Access denied - parent directory outside allowed directories: ${realParentPath} not in ${allowedDirectories.join(
+          ", ",
+        )}`,
+      );
+    }
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      // If it's not a "does not exist" error, rethrow and let validatePath handle it
+      throw error;
+    }
+  }
+
+  // Parent (or some ancestor) does not exist - we may need to create it.
+  // Security: We only create directories if the final requested path is
+  // within allowedDirectories (checked in validatePath before calling this),
+  // and we validate each created directory as we go.
+  const segments: string[] = [];
+  let current = parentDir;
+
+  // Walk up until we find an existing ancestor or hit filesystem root
+  // Note: We don't trust dirname("/") to progress forever; stop when stable.
+  while (true) {
+    segments.push(current);
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    try {
+      await fs.lstat(current);
+      break; // Found an existing path
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        current = parent;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  // We collected segments from leaf up to the first existing ancestor/root.
+  // Create them from top-most missing down to the immediate parentDir.
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const dir = segments[i];
+
+    // Normalize and check allowedDirectories before creating
+    const normalizedDir = normalizePath(dir);
+    if (!isPathWithinAllowedDirectories(normalizedDir, allowedDirectories)) {
+      throw new Error(
+        `Access denied - cannot create directory outside allowed directories: ${dir} not in ${allowedDirectories.join(
+          ", ",
+        )}`,
+      );
+    }
+
+    try {
+      await fs.mkdir(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        // Something already exists at this path; verify it's a directory
+        const stats = await fs.lstat(dir);
+        if (!stats.isDirectory()) {
+          throw new Error(
+            `Cannot create directory; path exists and is not a directory: ${dir}`,
+          );
+        }
+        continue;
+      }
+      throw error;
+    }
+
+    // After creation, resolve real path and ensure it is still within allowed directories
+    const realCreatedPath = await fs.realpath(dir);
+    const normalizedCreated = normalizePath(realCreatedPath);
+    if (
+      !isPathWithinAllowedDirectories(normalizedCreated, allowedDirectories)
+    ) {
+      throw new Error(
+        `Access denied - created directory symlink target outside allowed directories: ${realCreatedPath} not in ${allowedDirectories.join(
+          ", ",
+        )}`,
+      );
+    }
+  }
+}
+
+export async function validatePath(
+  requestedPath: string,
+  options?: ValidatePathOptions,
+): Promise<string> {
   const expandedPath = expandHome(requestedPath);
   const absolute = path.isAbsolute(expandedPath)
     ? path.resolve(expandedPath)
@@ -322,15 +434,17 @@ export async function validatePath(requestedPath: string): Promise<string> {
   // Security: Check if path is within allowed directories before any file operations
   const isAllowed = isPathWithinAllowedDirectories(
     normalizedRequested,
-    allowedDirectories
+    allowedDirectories,
   );
   if (!isAllowed) {
     throw new Error(
       `Access denied - path outside allowed directories: ${absolute} not in ${allowedDirectories.join(
-        ", "
-      )}`
+        ", ",
+      )}`,
     );
   }
+
+  const createParentIfMissing = options?.createParentIfMissing === true;
 
   // Security: Handle symlinks by checking their real path to prevent symlink attacks
   // This prevents attackers from creating symlinks that point outside allowed directories
@@ -340,8 +454,8 @@ export async function validatePath(requestedPath: string): Promise<string> {
     if (!isPathWithinAllowedDirectories(normalizedReal, allowedDirectories)) {
       throw new Error(
         `Access denied - symlink target outside allowed directories: ${realPath} not in ${allowedDirectories.join(
-          ", "
-        )}`
+          ", ",
+        )}`,
       );
     }
     return realPath;
@@ -358,13 +472,22 @@ export async function validatePath(requestedPath: string): Promise<string> {
         ) {
           throw new Error(
             `Access denied - parent directory outside allowed directories: ${realParentPath} not in ${allowedDirectories.join(
-              ", "
-            )}`
+              ", ",
+            )}`,
           );
         }
         return absolute;
-      } catch {
-        throw new Error(`Parent directory does not exist: ${parentDir}`);
+      } catch (parentError) {
+        if (!createParentIfMissing) {
+          throw new Error(`Parent directory does not exist: ${parentDir}`);
+        }
+
+        // Attempt to securely create the missing parent directory chain
+        await ensureParentDirectoryExists(absolute);
+        // After creation, return the absolute path for the new file. We intentionally
+        // do not call fs.realpath on the file itself here, because it still may not
+        // exist yet (for new files).
+        return absolute;
       }
     }
     throw error;
@@ -387,14 +510,14 @@ export async function getFileStats(filePath: string): Promise<FileInfo> {
 
 export async function readFileContent(
   filePath: string,
-  encoding: string = "utf-8"
+  encoding: string = "utf-8",
 ): Promise<string> {
   return await fs.readFile(filePath, encoding as BufferEncoding);
 }
 
 export async function writeFileContent(
   filePath: string,
-  content: string
+  content: string,
 ): Promise<void> {
   try {
     // Security: 'wx' flag ensures exclusive creation - fails if file/symlink exists,
@@ -454,7 +577,7 @@ function escapeRegex(str: string): string {
 function tryExactMatch(
   content: string,
   oldText: string,
-  newText: string
+  newText: string,
 ): MatchResult | null {
   const searchText = normalizeLineEndings(oldText);
   const replaceText = normalizeLineEndings(newText);
@@ -501,7 +624,7 @@ function tryExactMatch(
 function tryFlexibleMatch(
   content: string,
   oldText: string,
-  newText: string
+  newText: string,
 ): MatchResult | null {
   const contentLines = content.split("\n");
   const searchLines = oldText.split("\n");
@@ -519,7 +642,7 @@ function tryFlexibleMatch(
 
     // Compare with trimmed content (whitespace-insensitive)
     const isMatch = searchLines.every(
-      (searchLine, j) => searchLine.trim() === window[j].trim()
+      (searchLine, j) => searchLine.trim() === window[j].trim(),
     );
 
     if (isMatch) {
@@ -546,7 +669,7 @@ function tryFlexibleMatch(
   contentLines.splice(
     firstMatch.startLine - 1,
     firstMatch.endLine - firstMatch.startLine + 1,
-    ...indentedReplaceLines
+    ...indentedReplaceLines,
   );
 
   return {
@@ -577,7 +700,7 @@ function tryFlexibleMatch(
 function tryFuzzyMatch(
   content: string,
   oldText: string,
-  newText: string
+  newText: string,
 ): MatchResult | null {
   // Tokenize around code delimiters
   const delimiters = [
@@ -654,7 +777,7 @@ function applyEditWithStrategy(
   content: string,
   edit: FileEdit,
   strategy: "exact" | "flexible" | "fuzzy" | "auto",
-  failOnAmbiguous: boolean
+  failOnAmbiguous: boolean,
 ): MatchResult {
   let result: MatchResult | null = null;
   const attemptedStrategies: string[] = [];
@@ -675,7 +798,7 @@ function applyEditWithStrategy(
             `Suggestion: ${
               result.ambiguity?.suggestion ||
               "Add more context to uniquely identify the target"
-            }`
+            }`,
         );
       }
       return result;
@@ -696,7 +819,7 @@ function applyEditWithStrategy(
             `Suggestion: ${
               result.ambiguity?.suggestion ||
               "Add more context to uniquely identify the target"
-            }`
+            }`,
         );
       }
       return result;
@@ -736,7 +859,7 @@ function applyEditWithStrategy(
           `Suggestion: ${
             result.ambiguity?.suggestion ||
             "Add more context to uniquely identify the target"
-          }`
+          }`,
       );
     }
   }
@@ -766,7 +889,7 @@ function applyEditWithStrategy(
     throw new Error(
       `Expected ${edit.expectedOccurrences} occurrence(s) but found ${result.occurrences}\n` +
         (edit.instruction ? `Edit: ${edit.instruction}\n` : "") +
-        `Strategy used: ${result.strategy}`
+        `Strategy used: ${result.strategy}`,
     );
   }
 
@@ -779,7 +902,7 @@ export async function applyFileEdits(
   dryRun: boolean = false,
   matchingStrategy: "exact" | "flexible" | "fuzzy" | "auto" = "auto",
   failOnAmbiguous: boolean = true,
-  returnMetadata?: boolean
+  returnMetadata?: boolean,
 ): Promise<string | { diff: string; metadata: MatchResult[] }> {
   // Read file content and detect original line ending
   const rawContent = await fs.readFile(filePath, "utf-8");
@@ -797,7 +920,7 @@ export async function applyFileEdits(
       modifiedContent,
       edit,
       matchingStrategy,
-      failOnAmbiguous
+      failOnAmbiguous,
     );
     editResults.push(result);
     modifiedContent = result.modifiedContent;
@@ -808,7 +931,7 @@ export async function applyFileEdits(
     content,
     modifiedContent,
     filePath,
-    editResults
+    editResults,
   );
 
   // Format diff with appropriate number of backticks
@@ -817,7 +940,7 @@ export async function applyFileEdits(
     numBackticks++;
   }
   const formattedDiff = `${"`".repeat(
-    numBackticks
+    numBackticks,
   )}diff\n${detailedDiff}${"`".repeat(numBackticks)}\n\n`;
 
   if (!dryRun) {
@@ -845,7 +968,7 @@ export async function applyFileEdits(
   if (returnMetadata) {
     return {
       diff: formattedDiff,
-      metadata: editResults
+      metadata: editResults,
     };
   }
 
@@ -855,7 +978,7 @@ export async function applyFileEdits(
 // Memory-efficient implementation to get the last N lines of a file
 export async function tailFile(
   filePath: string,
-  numLines: number
+  numLines: number,
 ): Promise<string> {
   const CHUNK_SIZE = 1024; // Read 1KB at a time
   const stats = await fs.stat(filePath);
@@ -914,7 +1037,7 @@ export async function tailFile(
 // New function to get the first N lines of a file
 export async function headFile(
   filePath: string,
-  numLines: number
+  numLines: number,
 ): Promise<string> {
   const fileHandle = await fs.open(filePath, "r");
   try {
@@ -963,7 +1086,7 @@ export async function headFile(
 export async function rangeFile(
   filePath: string,
   startLine: number,
-  endLine: number
+  endLine: number,
 ): Promise<string> {
   const CHUNK_SIZE = 1024; // Read 1KB at a time
   const fileHandle = await fs.open(filePath, "r");
@@ -1030,7 +1153,7 @@ export async function searchFilesWithValidation(
   rootPath: string,
   pattern: string,
   allowedDirectories: string[],
-  options: SearchOptions = {}
+  options: SearchOptions = {},
 ): Promise<string[]> {
   const { excludePatterns = [] } = options;
   const results: string[] = [];
@@ -1050,7 +1173,7 @@ export async function searchFilesWithValidation(
 
         const relativePath = path.relative(rootPath, fullPath);
         const shouldExclude = excludePatterns.some((excludePattern) =>
-          minimatch(relativePath, excludePattern, { dot: true })
+          minimatch(relativePath, excludePattern, { dot: true }),
         );
 
         if (shouldExclude) continue;
@@ -1079,7 +1202,7 @@ export async function grepFilesWithValidation(
   pattern: string,
   searchPath: string,
   allowedDirectories: string[],
-  options: GrepOptions = {}
+  options: GrepOptions = {},
 ): Promise<GrepResult> {
   const {
     caseInsensitive = false,
@@ -1103,7 +1226,7 @@ export async function grepFilesWithValidation(
     throw new Error(
       `Invalid regex pattern: ${pattern} - ${
         error instanceof Error ? error.message : String(error)
-      }`
+      }`,
     );
   }
 
@@ -1153,7 +1276,7 @@ export async function grepFilesWithValidation(
       const fileStats = await fs.stat(filePath);
       if (fileStats.size > MAX_FILE_SIZE) {
         console.warn(
-          `Skipping large file: ${filePath} (${formatSize(fileStats.size)})`
+          `Skipping large file: ${filePath} (${formatSize(fileStats.size)})`,
         );
         return;
       }
@@ -1284,7 +1407,7 @@ export async function grepFilesWithValidation(
 
   async function searchDirectory(
     dirPath: string,
-    depth: number = 0
+    depth: number = 0,
   ): Promise<void> {
     // Limit recursion depth
     if (depth > 10) return;

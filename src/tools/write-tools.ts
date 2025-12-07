@@ -58,7 +58,7 @@ interface EditFileResults {
  */
 async function writeFileBasedOnExtension(
   validPath: string,
-  content: string
+  content: string,
 ): Promise<void> {
   const ext = path.extname(validPath).toLowerCase();
   const filename = path.basename(validPath);
@@ -116,7 +116,7 @@ async function writeFileBasedOnExtension(
  */
 async function processFileEditRequest(
   request: EditFileRequest,
-  failOnAmbiguous: boolean = true
+  failOnAmbiguous: boolean = true,
 ): Promise<EditFileResult> {
   try {
     // SECURITY: Path validated against allowed directories, symlink targets checked,
@@ -130,7 +130,7 @@ async function processFileEditRequest(
       request.failOnAmbiguous !== undefined
         ? request.failOnAmbiguous
         : failOnAmbiguous,
-      true // Return metadata
+      true, // Return metadata
     );
 
     if (typeof result === "string") {
@@ -140,7 +140,7 @@ async function processFileEditRequest(
     // Aggregate metadata from all edits
     const totalOccurrences = result.metadata.reduce(
       (sum, r) => sum + r.occurrences,
-      0
+      0,
     );
     const usedStrategies = [...new Set(result.metadata.map((r) => r.strategy))];
     const finalStrategy =
@@ -167,7 +167,7 @@ async function processFileEditRequest(
 
 async function processMultiFileEdits(
   files: EditFileRequest[],
-  failFast: boolean = true
+  failFast: boolean = true,
 ): Promise<EditFileResults> {
   const results: EditFileResult[] = [];
   const rollbackData: Array<{ path: string; originalContent: string }> = [];
@@ -183,7 +183,7 @@ async function processMultiFileEdits(
         if (failFast && !request.dryRun) {
           try {
             originalContent = await readFileContent(
-              await validatePath(request.path)
+              await validatePath(request.path),
             );
           } catch (error) {
             // If we can't read the original content, we can't provide rollback
@@ -257,7 +257,7 @@ async function processMultiFileEdits(
 }
 
 async function performRollback(
-  rollbackData: Array<{ path: string; originalContent: string }>
+  rollbackData: Array<{ path: string; originalContent: string }>,
 ): Promise<void> {
   for (const item of rollbackData.reverse()) {
     // Rollback in reverse order
@@ -413,7 +413,9 @@ export async function handleWriteTool(name: string, args: any) {
       // 3. Symlink resolution and target validation (fs.realpath)
       // 4. Parent directory validation for new files
       // Prevents: CWE-23 (Path Traversal), CVE-2025-54794, CVE-2025-53109, CVE-2025-53110
-      const validPath = await validatePath(parsed.data.path);
+      const validPath = await validatePath(parsed.data.path, {
+        createParentIfMissing: true,
+      });
       await writeFileBasedOnExtension(validPath, parsed.data.content);
       return {
         content: [
@@ -460,7 +462,7 @@ export async function handleWriteTool(name: string, args: any) {
 
         const editResults = await processMultiFileEdits(
           parsed.data.files,
-          parsed.data.failFast
+          parsed.data.failFast,
         );
 
         const output = formatMultiFileEditResults(editResults);
@@ -476,14 +478,16 @@ export async function handleWriteTool(name: string, args: any) {
       const parsed = WriteMultipleFilesArgsSchema.safeParse(args);
       if (!parsed.success) {
         throw new Error(
-          `Invalid arguments for write_multiple_files: ${parsed.error}`
+          `Invalid arguments for write_multiple_files: ${parsed.error}`,
         );
       }
 
-      // Validate all paths before any writing
+      // Validate all paths before any writing, auto-creating parent directories
       const validationPromises = parsed.data.files.map(async (file) => {
         try {
-          const validPath = await validatePath(file.path);
+          const validPath = await validatePath(file.path, {
+            createParentIfMissing: true,
+          });
           return {
             path: file.path,
             validPath,
@@ -539,10 +543,10 @@ export async function handleWriteTool(name: string, args: any) {
 
       const results = await Promise.allSettled(writePromises);
       const successful = results.filter(
-        (r) => r.status === "fulfilled" && r.value.success
+        (r) => r.status === "fulfilled" && r.value.success,
       ).length;
       const failed = results.filter(
-        (r) => r.status === "fulfilled" && !r.value.success
+        (r) => r.status === "fulfilled" && !r.value.success,
       ).length;
 
       // Format results
