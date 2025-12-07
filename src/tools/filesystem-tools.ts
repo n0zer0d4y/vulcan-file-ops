@@ -1,10 +1,17 @@
 import fs from "fs/promises";
+
 import path from "path";
+
 import { minimatch } from "minimatch";
+
 import { zodToJsonSchema } from "zod-to-json-schema";
+
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
+
 import { expandHome, normalizePath } from "../utils/path-utils.js";
+
 import { isPathWithinAllowedDirectories } from "../utils/path-validation.js";
+
 import {
   MakeDirectoryArgsSchema,
   ListDirectoryArgsSchema,
@@ -25,6 +32,7 @@ import {
   type FileOperationsArgs,
   type DeleteFilesArgs,
 } from "../types/index.js";
+
 import {
   validatePath,
   getFileStats,
@@ -36,6 +44,7 @@ import {
 } from "../utils/lib.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
+
 type ToolInput = any;
 
 // Internal interfaces for unified list_directory implementation
@@ -197,7 +206,7 @@ export function getFileSystemTools() {
  */
 async function collectFileEntry(
   entryPath: string,
-  dirent: any
+  dirent: any,
 ): Promise<FileEntry> {
   try {
     const stats = await fs.stat(entryPath);
@@ -220,39 +229,46 @@ async function collectFileEntry(
   }
 }
 
-/**
- * Helper: Filter entries and collect metadata
- */
 async function filterAndCollectEntries(
   rawEntries: any[],
+
   basePath: string,
-  args: ListDirectoryArgs
+
+  args: ListDirectoryArgs,
 ): Promise<ListingResult> {
   let excludedByPatterns = 0;
+
   let excludedByIgnoreRules = 0;
+
   const entries: FileEntry[] = [];
 
   for (const dirent of rawEntries) {
     // Check global ignore rules
+
     if (dirent.isDirectory() && shouldIgnoreFolder(dirent.name)) {
       excludedByIgnoreRules++;
+
       continue;
     }
 
-    // Check user exclude patterns
     if (args.excludePatterns && args.excludePatterns.length > 0) {
-      const shouldExclude = args.excludePatterns.some((pattern) => {
+      const shouldExclude = args.excludePatterns.some((pattern: string) => {
         return minimatch(dirent.name, pattern, { dot: true });
       });
+
       if (shouldExclude) {
         excludedByPatterns++;
+
         continue;
       }
     }
 
     // Collect entry with metadata
+
     const entryPath = path.join(basePath, dirent.name);
+
     const entry = await collectFileEntry(entryPath, dirent);
+
     entries.push(entry);
   }
 
@@ -264,7 +280,7 @@ async function filterAndCollectEntries(
  */
 async function recursivelyExpandEntries(
   entries: FileEntry[],
-  args: ListDirectoryArgs
+  args: ListDirectoryArgs,
 ): Promise<void> {
   for (const entry of entries) {
     if (entry.isDirectory) {
@@ -275,7 +291,7 @@ async function recursivelyExpandEntries(
         const { entries: children } = await filterAndCollectEntries(
           subEntries,
           entry.path,
-          args
+          args,
         );
         entry.children = children;
 
@@ -361,7 +377,7 @@ function calculateTotalSize(entries: FileEntry[]): number {
 function formatSimple(
   entries: FileEntry[],
   excludedByPatterns: number,
-  excludedByIgnoreRules: number
+  excludedByIgnoreRules: number,
 ): { content: any[] } {
   const lines = entries.map((entry) => {
     const prefix = entry.isDirectory ? "[DIR]" : "[FILE]";
@@ -389,7 +405,7 @@ function formatSimple(
 function formatDetailed(
   entries: FileEntry[],
   excludedByPatterns: number,
-  excludedByIgnoreRules: number
+  excludedByIgnoreRules: number,
 ): { content: any[] } {
   const header = "Type      Name                  Size        Modified";
   const separator = "-".repeat(70);
@@ -413,7 +429,7 @@ function formatDetailed(
   const totalDirs = entries.filter((e) => e.isDirectory).length;
   const totalSize = entries.reduce(
     (sum, e) => sum + (e.isDirectory ? 0 : e.size),
-    0
+    0,
   );
 
   const output = [
@@ -440,7 +456,7 @@ function formatTree(
   entries: FileEntry[],
   excludedByPatterns: number,
   prefix: string = "",
-  isRoot: boolean = true
+  isRoot: boolean = true,
 ): { content: any[] } {
   const lines: string[] = [];
 
@@ -459,7 +475,7 @@ function formatTree(
       const childPrefix = prefix + (isLast ? "    " : "│   ");
       const childResult = formatTree(entry.children, 0, childPrefix, false);
       lines.push(
-        ...childResult.content[0].text.split("\n").filter((l: string) => l)
+        ...childResult.content[0].text.split("\n").filter((l: string) => l),
       );
     }
   });
@@ -485,7 +501,7 @@ function formatJson(
   entries: FileEntry[],
   basePath: string,
   excludedByPatterns: number,
-  excludedByIgnoreRules: number
+  excludedByIgnoreRules: number,
 ): { content: any[] } {
   const totalFiles = countFiles(entries);
   const totalDirs = countDirectories(entries);
@@ -522,7 +538,7 @@ function formatOutput(
   entries: FileEntry[],
   args: ListDirectoryArgs,
   excludedByPatterns: number,
-  excludedByIgnoreRules: number
+  excludedByIgnoreRules: number,
 ): { content: any[] } {
   switch (args.format) {
     case "simple":
@@ -536,7 +552,7 @@ function formatOutput(
         entries,
         args.path,
         excludedByPatterns,
-        excludedByIgnoreRules
+        excludedByIgnoreRules,
       );
     default:
       return formatSimple(entries, excludedByPatterns, excludedByIgnoreRules);
@@ -547,7 +563,7 @@ function formatOutput(
  * Main unified list_directory implementation
  */
 async function listDirectory(
-  args: ListDirectoryArgs
+  args: ListDirectoryArgs,
 ): Promise<{ content: any[] }> {
   // Step 1: Validate path
   const validPath = await validatePath(args.path);
@@ -581,7 +597,7 @@ export async function handleFileSystemTool(name: string, args: any) {
       const parsed = MakeDirectoryArgsSchema.safeParse(args);
       if (!parsed.success) {
         throw new Error(
-          `Invalid arguments for make_directory: ${parsed.error}`
+          `Invalid arguments for make_directory: ${parsed.error}`,
         );
       }
 
@@ -598,7 +614,7 @@ export async function handleFileSystemTool(name: string, args: any) {
             pathsInput = parsedArray;
             // Log for diagnostics - helps identify which clients have serialization issues
             console.error(
-              "[INFO] make_directory: Detected and corrected stringified array parameter"
+              "[INFO] make_directory: Detected and corrected stringified array parameter",
             );
           }
         } catch {
@@ -626,7 +642,7 @@ export async function handleFileSystemTool(name: string, args: any) {
         // (CVE-2025-54794 pattern: ensures path separator is required, not just prefix match)
         if (!isPathWithinAllowedDirectories(normalized, allowedDirs)) {
           throw new Error(
-            `Access denied: Path ${dirPath} is not within allowed directories`
+            `Access denied: Path ${dirPath} is not within allowed directories`,
           );
         }
 
@@ -638,7 +654,7 @@ export async function handleFileSystemTool(name: string, args: any) {
         validatedPaths.map(async ({ original, normalized }) => {
           await fs.mkdir(normalized, { recursive: true });
           return original;
-        })
+        }),
       );
 
       // Format response based on single vs batch
@@ -663,7 +679,7 @@ export async function handleFileSystemTool(name: string, args: any) {
       const parsed = ListDirectoryArgsSchema.safeParse(args);
       if (!parsed.success) {
         throw new Error(
-          `Invalid arguments for list_directory: ${parsed.error}`
+          `Invalid arguments for list_directory: ${parsed.error}`,
         );
       }
       return await listDirectory(parsed.data);
@@ -710,7 +726,7 @@ export async function handleFileSystemTool(name: string, args: any) {
       const parsed = RegisterDirectoryArgsSchema.safeParse(args);
       if (!parsed.success) {
         throw new Error(
-          `Invalid arguments for register_directory: ${parsed.error}`
+          `Invalid arguments for register_directory: ${parsed.error}`,
         );
       }
 
@@ -760,6 +776,7 @@ export async function handleFileSystemTool(name: string, args: any) {
         content: [
           {
             type: "text",
+
             text: `Allowed directories:\n${getAllowedDirectories().join("\n")}`,
           },
         ],
@@ -768,99 +785,131 @@ export async function handleFileSystemTool(name: string, args: any) {
 
     case "file_operations": {
       const parsed = FileOperationsArgsSchema.safeParse(args);
+
       if (!parsed.success) {
         throw new Error(
-          `Invalid arguments for file_operations: ${parsed.error}`
+          `Invalid arguments for file_operations: ${parsed.error}`,
         );
       }
 
       // Phase 1: Path Validation
-      const validationPromises = parsed.data.files.map(async (file, index) => {
-        try {
-          const validSource = await validatePath(file.source);
-          const validDest = await validatePath(file.destination);
-          return {
-            index,
-            source: file.source,
-            destination: file.destination,
-            validSource,
-            validDest,
-            success: true,
-          };
-        } catch (error) {
-          return {
-            index,
-            source: file.source,
-            destination: file.destination,
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          };
-        }
-      });
+      const validationPromises = parsed.data.files.map(
+        async (file: FileOperationsArgs["files"][number], index: number) => {
+          try {
+            const validSource = await validatePath(file.source);
+
+            const validDest = await validatePath(file.destination);
+
+            return {
+              index,
+
+              source: file.source,
+
+              destination: file.destination,
+
+              validSource,
+
+              validDest,
+
+              success: true,
+            };
+          } catch (error) {
+            return {
+              index,
+              source: file.source,
+
+              destination: file.destination,
+
+              success: false,
+
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        },
+      );
 
       const validatedFiles = await Promise.all(validationPromises);
 
       // Check for validation errors
+
       const validationErrors = validatedFiles.filter((f) => !f.success);
+
       if (validationErrors.length > 0) {
         const errorMessages = validationErrors
+
           .map(
             (f) =>
-              `${f.source} → ${f.destination}: ${f.error || "Unknown error"}`
+              `${f.source} → ${f.destination}: ${f.error || "Unknown error"}`,
           )
+
           .join("\n");
+
         throw new Error(`Path validation failed:\n${errorMessages}`);
       }
 
       // Phase 2: Conflict Detection
+
       const conflictChecks = await Promise.all(
         validatedFiles.map(async (file) => {
           try {
             await fs.access(file.validDest!);
+
             return {
               ...file,
+
               hasConflict: true,
             };
           } catch {
             return {
               ...file,
+
               hasConflict: false,
             };
           }
-        })
+        }),
       );
 
       // Handle conflicts based on strategy
+
       const filesToProcess = conflictChecks.filter((file) => {
         if (file.hasConflict) {
           switch (parsed.data.onConflict) {
             case "skip":
               return false;
+
             case "error":
               throw new Error(
-                `Destination already exists: ${file.destination}`
+                `Destination already exists: ${file.destination}`,
               );
+
             case "overwrite":
               return true;
           }
         }
+
         return true;
       });
 
       // Phase 3: Execute Operations
+
       const operationPromises = filesToProcess.map(async (file) => {
         try {
           switch (parsed.data.operation) {
             case "move":
+
             case "rename":
               await fs.rename(file.validSource!, file.validDest!);
+
               break;
+
             case "copy":
               const stats = await fs.stat(file.validSource!);
+
               if (stats.isDirectory()) {
                 await copyDirectoryRecursive(
                   file.validSource!,
-                  file.validDest!
+
+                  file.validDest!,
                 );
               } else {
                 await fs.copyFile(file.validSource!, file.validDest!);
@@ -869,54 +918,75 @@ export async function handleFileSystemTool(name: string, args: any) {
           }
           return {
             index: file.index,
+
             source: file.source,
+
             destination: file.destination,
+
             success: true,
+
             operation: parsed.data.operation,
           };
         } catch (error) {
           return {
             index: file.index,
+
             source: file.source,
+
             destination: file.destination,
+
             success: false,
+
             error: error instanceof Error ? error.message : String(error),
+
             operation: parsed.data.operation,
           };
         }
       });
 
       const results = await Promise.allSettled(operationPromises);
+
       const processedResults = results.map((result, index) => {
         if (result.status === "fulfilled") {
           return result.value;
         } else {
           return {
             index,
+
             source: filesToProcess[index].source,
+
             destination: filesToProcess[index].destination,
+
             success: false,
+
             error:
               result.reason instanceof Error
                 ? result.reason.message
                 : String(result.reason),
+
             operation: parsed.data.operation,
           };
         }
       });
 
       // Prepare response
+
       const successful = processedResults.filter((r) => r.success);
+
       const failed = processedResults.filter((r) => !r.success);
 
       const successDetails = successful
+
         .map((r) => `✓ ${r.source} → ${r.destination}`)
+
         .join("\n");
 
       const failureDetails =
         failed.length > 0
           ? failed
+
               .map((r) => `✗ ${r.source} → ${r.destination}: ${r.error}`)
+
               .join("\n")
           : "";
 
@@ -924,6 +994,7 @@ export async function handleFileSystemTool(name: string, args: any) {
         content: [
           {
             type: "text",
+
             text:
               `Successfully performed ${parsed.data.operation} operations:\n\n` +
               `Total operations: ${processedResults.length}\n` +
@@ -963,7 +1034,7 @@ export async function handleFileSystemTool(name: string, args: any) {
               error: error instanceof Error ? error.message : String(error),
             };
           }
-        }
+        },
       );
 
       const validatedPaths = await Promise.all(validationPromises);
@@ -1003,7 +1074,7 @@ export async function handleFileSystemTool(name: string, args: any) {
 
       if (pathsToDelete.length === 0) {
         throw new Error(
-          "No valid paths to delete - all paths either don't exist or failed validation"
+          "No valid paths to delete - all paths either don't exist or failed validation",
         );
       }
 
@@ -1131,7 +1202,7 @@ export async function handleFileSystemTool(name: string, args: any) {
 // Helper function for recursive directory copying
 async function copyDirectoryRecursive(
   source: string,
-  destination: string
+  destination: string,
 ): Promise<void> {
   // Create destination directory
   await fs.mkdir(destination, { recursive: true });
