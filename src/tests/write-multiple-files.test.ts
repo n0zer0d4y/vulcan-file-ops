@@ -98,7 +98,7 @@ describe("write_multiple_files tool", () => {
     ];
 
     await expect(
-      handleWriteTool("write_multiple_files", { files })
+      handleWriteTool("write_multiple_files", { files }),
     ).rejects.toThrow("Invalid file paths");
   });
 
@@ -109,7 +109,7 @@ describe("write_multiple_files tool", () => {
     }));
 
     await expect(
-      handleWriteTool("write_multiple_files", { files })
+      handleWriteTool("write_multiple_files", { files }),
     ).rejects.toThrow("Maximum 50 files per operation");
   });
 
@@ -117,7 +117,7 @@ describe("write_multiple_files tool", () => {
     const files: any[] = [];
 
     await expect(
-      handleWriteTool("write_multiple_files", { files })
+      handleWriteTool("write_multiple_files", { files }),
     ).rejects.toThrow("At least one file must be provided");
   });
 

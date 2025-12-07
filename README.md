@@ -496,6 +496,11 @@ Create or replace file content
 
 **Note:** This tool is limited to single-file operations only. **RECOMMENDED:** Use `write_multiple_files` instead, which supports both single and batch file operations for greater flexibility.
 
+**Automatic directory creation:**
+
+- If the target file's parent directory does not exist but is inside your configured approved folders, the server will automatically create the required directory structure before writing the file
+- If the path is outside approved folders, the operation fails with a clear error and no directories are created
+
 **Input:**
 
 - `path` (string): File path
@@ -506,6 +511,11 @@ Create or replace file content
 ##### write_multiple_files
 
 Create or replace multiple files concurrently
+
+**Automatic directory creation:**
+
+- For each requested file, if the parent directory does not exist but is inside your configured approved folders, the server will automatically create the required directory structure before writing
+- Paths outside approved folders are rejected during validation and no directories are created; the operation fails with a detailed list of invalid paths
 
 **Input:**
 

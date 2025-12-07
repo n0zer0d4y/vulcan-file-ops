@@ -6,7 +6,10 @@ import { handleWriteTool } from "../tools/write-tools.js";
 import { handleReadTool } from "../tools/read-tools.js";
 import { setAllowedDirectories, getAllowedDirectories } from "../utils/lib.js";
 
-const TEST_WORKSPACE = path.join(os.tmpdir(), `vulcan-test-write-docs-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+const TEST_WORKSPACE = path.join(
+  os.tmpdir(),
+  `vulcan-test-write-docs-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+);
 const OUTPUT_DIR = path.join(TEST_WORKSPACE, "write-output");
 
 // Helper to set test roots
@@ -61,7 +64,7 @@ describe("write_file with PDF", () => {
     expect(writeResult.content).toBeDefined();
     expect(writeResult.content[0].type).toBe("text");
     expect((writeResult.content[0] as any).text).toContain(
-      "Successfully wrote"
+      "Successfully wrote",
     );
 
     // Verify file was created
@@ -73,7 +76,7 @@ describe("write_file with PDF", () => {
   test("creates PDF with long content and pagination", async () => {
     const longContent = Array(100)
       .fill(
-        "This is line content that should span multiple pages when rendered in PDF format."
+        "This is line content that should span multiple pages when rendered in PDF format.",
       )
       .join("\n");
     const pdfPath = path.join(OUTPUT_DIR, "long-content.pdf");
@@ -138,7 +141,7 @@ describe("write_file with PDF", () => {
 
     expect(writeResult.content[0].type).toBe("text");
     expect((writeResult.content[0] as any).text).toContain(
-      "Successfully wrote"
+      "Successfully wrote",
     );
 
     const stats = await fs.stat(pdfPath);
@@ -214,7 +217,7 @@ describe("write_file with DOCX", () => {
     expect(writeResult.content).toBeDefined();
     expect(writeResult.content[0].type).toBe("text");
     expect((writeResult.content[0] as any).text).toContain(
-      "Successfully wrote"
+      "Successfully wrote",
     );
 
     // Verify file was created
@@ -245,7 +248,7 @@ describe("write_file with DOCX", () => {
 
     expect(writeResult.content[0].type).toBe("text");
     expect((writeResult.content[0] as any).text).toContain(
-      "Successfully wrote"
+      "Successfully wrote",
     );
 
     const stats = await fs.stat(docxPath);
@@ -316,7 +319,7 @@ describe("write_file with DOCX", () => {
 
     const longContent = Array(50)
       .fill(
-        "This is a paragraph of text that will be written to the DOCX document."
+        "This is a paragraph of text that will be written to the DOCX document.",
       )
       .join("\n");
     const docxPath = path.join(OUTPUT_DIR, "long-content.docx");
@@ -340,6 +343,79 @@ describe("write_multiple_files with documents", () => {
 
   afterAll(async () => {
     await cleanupTestEnvironment();
+  });
+
+  test("write_file creates parent directories automatically within allowed root", async () => {
+    const nestedDir = path.join(OUTPUT_DIR, "auto-created", "nested", "dir");
+    const targetPath = path.join(nestedDir, "auto-file.txt");
+
+    // Ensure directory does NOT exist before the call
+    await expect(fs.stat(nestedDir)).rejects.toHaveProperty("code", "ENOENT");
+
+    const result = await handleWriteTool("write_file", {
+      path: targetPath,
+      content: "auto-create test content",
+    });
+
+    const content = result.content[0] as { type: string; text: string };
+    expect(content.text).toContain("Successfully wrote");
+
+    // Parent directory should now exist
+    const dirStats = await fs.stat(nestedDir);
+    expect(dirStats.isDirectory()).toBe(true);
+
+    // File should exist with content
+    const fileStats = await fs.stat(targetPath);
+    expect(fileStats.isFile()).toBe(true);
+  });
+
+  test("write_multiple_files creates parent directories automatically within allowed root", async () => {
+    const baseDir = path.join(OUTPUT_DIR, "multi-auto");
+    const file1Dir = path.join(baseDir, "one", "deep");
+    const file2Dir = path.join(baseDir, "two", "deeper");
+    const file1Path = path.join(file1Dir, "file1.txt");
+    const file2Path = path.join(file2Dir, "file2.txt");
+
+    // Ensure directories do NOT exist before the call
+    await expect(fs.stat(file1Dir)).rejects.toHaveProperty("code", "ENOENT");
+    await expect(fs.stat(file2Dir)).rejects.toHaveProperty("code", "ENOENT");
+
+    const result = await handleWriteTool("write_multiple_files", {
+      files: [
+        { path: file1Path, content: "file 1 content" },
+        { path: file2Path, content: "file 2 content" },
+      ],
+    });
+
+    const content = result.content[0] as { type: string; text: string };
+    expect(content.text).toContain("Wrote 2 of 2 files");
+    expect(content.text).toContain("file1.txt");
+    expect(content.text).toContain("file2.txt");
+
+    // Both parent directories should now exist
+    const dir1Stats = await fs.stat(file1Dir);
+    const dir2Stats = await fs.stat(file2Dir);
+    expect(dir1Stats.isDirectory()).toBe(true);
+    expect(dir2Stats.isDirectory()).toBe(true);
+
+    // Files should exist
+    const f1Stats = await fs.stat(file1Path);
+    const f2Stats = await fs.stat(file2Path);
+    expect(f1Stats.isFile()).toBe(true);
+    expect(f2Stats.isFile()).toBe(true);
+  });
+
+  test("write_multiple_files still fails for paths outside allowed directories even with auto-create", async () => {
+    // This test assumes only TEST_WORKSPACE is registered as allowed in setupTestEnvironment.
+    // Construct a path clearly outside of TEST_WORKSPACE.
+    const outsideBase = path.join(TEST_WORKSPACE, "..", "outside-auto");
+    const outsidePath = path.resolve(outsideBase, "outside.txt");
+
+    const resultPromise = handleWriteTool("write_multiple_files", {
+      files: [{ path: outsidePath, content: "should not be written" }],
+    });
+
+    await expect(resultPromise).rejects.toThrow("Invalid file paths");
   });
 
   test("creates multiple PDFs and DOCX files concurrently", async () => {
