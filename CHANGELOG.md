@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Server capabilities now only declare supported features (tools only)
 - Improved MCP protocol compliance by removing unsupported capability declarations
 
+### ⚠️ **User Impact Notice**
+
+**Existing users may experience continued connection issues** due to MCP client caching. To resolve:
+
+1. **Clear MCP client cache** (Claude Desktop: delete cache folder and restart)
+2. **Force latest version**: Use `@latest` in MCP configuration: `"args": ["@n0zer0d4y/vulcan-file-ops@latest"]`
+3. **Clear npm cache**: Run `npm cache clean --force` before restarting MCP client
+
+**New installations are unaffected** and will work immediately with version 1.2.3.
+
 ## [1.2.2] - 2026-01-17
 
 ### Changed
