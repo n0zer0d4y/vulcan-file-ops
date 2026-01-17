@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.2] - 2026-01-17
+
+### Changed
+
+- Upgraded `@modelcontextprotocol/sdk` to `^1.25.2`
+- Applied safe dependency updates (patch/minor within existing major versions) including:
+  - `diff` to `^8.0.3`
+  - `html-to-pdfmake` to `^2.5.32`
+  - `jsdom` to `^27.4.0`
+  - `minimatch` to `^10.1.1`
+  - `pdf-parse` to `^2.4.5`
+  - `zod-to-json-schema` to `^3.25.1`
+
+### Notes
+
+- `npm audit fix --force` was intentionally not used, as it would introduce breaking changes (notably via a `ts-node` downgrade).
+
 ## [1.2.1] - 2025-12-07
 
 ### Changed
