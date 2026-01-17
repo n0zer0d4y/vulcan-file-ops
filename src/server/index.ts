@@ -510,8 +510,6 @@ const server = new Server(
       tools: {
         listChanged: true,
       },
-      resources: {},
-      prompts: {},
     },
   }
 );
@@ -526,8 +524,6 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => {
       tools: {
         listChanged: true,
       },
-      resources: {},
-      prompts: {},
     },
     serverInfo: {
       name: "vulcan-file-ops",

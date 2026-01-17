@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.3] - 2026-01-17
+
+### Fixed
+
+- **CRITICAL**: Fixed MCP server connection failure in Claude Desktop caused by unsupported capability declarations
+  - Removed empty `resources: {}` and `prompts: {}` capability declarations from server initialization
+  - Server was declaring capabilities it didn't implement, causing "Method not found" errors for `resources/list` and `prompts/list`
+  - Post-MCP SDK upgrade compatibility fix: MCP protocol now strictly enforces that declared capabilities must have corresponding handlers
+  - Claude Desktop can now successfully connect and initialize the server without errors
+
+### Changed
+
+- Server capabilities now only declare supported features (tools only)
+- Improved MCP protocol compliance by removing unsupported capability declarations
+
 ## [1.2.2] - 2026-01-17
 
 ### Changed
