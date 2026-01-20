@@ -519,7 +519,11 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => {
   const clientCapabilities = request.params.capabilities;
 
   return {
-    protocolVersion: LATEST_PROTOCOL_VERSION,
+    // CRITICAL FIX: Use 2025-06-18 for Claude Desktop compatibility
+    // Claude Desktop (as of 2026-01-21) only supports protocol version 2025-06-18
+    // Using LATEST_PROTOCOL_VERSION (2025-11-25) causes immediate disconnection
+    // See: RCA-Claude-Desktop-MCP-Connection-Failure-2026-01-21.md
+    protocolVersion: "2025-06-18",
     capabilities: {
       tools: {
         listChanged: true,
