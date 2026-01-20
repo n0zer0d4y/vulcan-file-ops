@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.4] - 2026-01-21
+
+### Fixed
+
+- **CRITICAL**: Fixed MCP server connection failure in Claude Desktop caused by protocol version mismatch
+  - MCP SDK 1.25.2 returns protocol version `2025-11-25` but Claude Desktop only supports `2025-06-18`
+  - Hardcoded protocol version to `2025-06-18` in initialize response for maximum client compatibility
+  - Server now successfully connects and maintains connection with Claude Desktop
+  - Cursor IDE and other modern MCP clients continue to work normally
+  - See `local_docs/RCA-Claude-Desktop-MCP-Connection-Failure-2026-01-21.md` for complete root cause analysis
+
+### Changed
+
+- Server initialization now explicitly uses protocol version `2025-06-18` instead of `LATEST_PROTOCOL_VERSION`
+- Added detailed comments explaining protocol version compatibility requirements
+
+### ⚠️ **User Impact Notice**
+
+**This version resolves the persistent "Server transport closed unexpectedly" error in Claude Desktop.**
+
+If you're still experiencing connection issues after upgrading to 1.2.4:
+1. **Restart Claude Desktop completely** (not just refresh)
+2. **Clear npm cache**: Run `npm cache clean --force`
+3. **Verify version**: Ensure `vulcan-file-ops` version shows 1.2.4 in logs
+4. **Check MCP configuration**: Ensure no cached versions in `node_modules`
+
 ## [1.2.3] - 2026-01-17
 
 ### Fixed
