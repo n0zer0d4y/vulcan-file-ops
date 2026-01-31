@@ -65,7 +65,7 @@
     "lint": "npm run lint:json"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@modelcontextprotocol/sdk": "1.20.0",
     "@turbodocx/html-to-docx": "^1.16.0",
     "diff": "^8.0.3",
     "docx": "^9.5.1",
