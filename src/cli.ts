@@ -3,9 +3,17 @@
 // CRITICAL: Detect MCP mode and suppress console output BEFORE any imports
 // MCP servers use stdin/stdout for JSON-RPC via stdio transport
 // Detection: stdin/stdout are NOT TTY (piped/redirected) = MCP mode
+//
+// EXCEPTION: --help and --version flags should always output to console
+// even when stdin/stdout are piped (e.g., in scripts or CI environments)
+const isHelpOrVersion = process.argv.some(
+  (arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v"
+);
+
 const isMCP =
-  (!process.stdin.isTTY && !process.stdout.isTTY) ||
-  process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio"));
+  !isHelpOrVersion &&
+  ((!process.stdin.isTTY && !process.stdout.isTTY) ||
+    process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio")));
 
 if (isMCP) {
   // Suppress all console methods (but NOT stdout/stderr streams - MCP SDK needs those)
