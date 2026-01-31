@@ -1,5 +1,32 @@
 #!/usr/bin/env node
 
+// CRITICAL: Suppress console output IMMEDIATELY, before any imports
+// This MUST be the first executable code due to ES Module execution order.
+// With static imports, child modules are evaluated BEFORE the importing
+// module's top-level code runs. By placing suppression here at the very top
+// of the main server module, we ensure no console output can corrupt the
+// MCP JSON-RPC protocol stream on stdout.
+// See: RCA-Claude-Desktop-MCP-Toggle-Failure-2026-01-31.md
+
+// Check for CLI info flags BEFORE suppression - these should always work
+const _isHelpOrVersion = process.argv.some(
+  (arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v"
+);
+
+const _mcpMode =
+  !_isHelpOrVersion &&
+  ((!process.stdin.isTTY && !process.stdout.isTTY) ||
+    process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio")));
+
+if (_mcpMode) {
+  const noop = () => {};
+  console.log = noop;
+  console.error = noop;
+  console.warn = noop;
+  console.info = noop;
+  console.debug = noop;
+}
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -262,27 +289,16 @@ function parseArguments() {
   return directories;
 }
 
-const directoryArgs = parseArguments();
+// Defer parseArguments() call to runServer() to avoid module-level side effects
+let directoryArgs: string[] = [];
 
 // Async initialization function to be called in runServer()
 async function initializeDirectories() {
-  // Detect MCP mode: stdin/stdout are NOT TTY (piped) = MCP mode
-  const isMCP =
-    (!process.stdin.isTTY && !process.stdout.isTTY) ||
-    process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio"));
-
-  // During MCP operation, suppress ALL console output to prevent protocol corruption
-  if (isMCP) {
-    const noop = () => {};
-    console.error = noop;
-    console.log = noop;
-    console.warn = noop;
-    console.info = noop;
-    console.debug = noop;
-  }
+  // Use the already-determined MCP mode from top of file
+  // Console suppression is already done at module load time via _mcpMode
 
   if (
-    !isMCP &&
+    !_mcpMode &&
     (approvedFoldersFromArgs.length > 0 ||
       directoryArgs.length > 0 ||
       ignoredFolders.length > 0 ||
@@ -341,7 +357,7 @@ async function initializeDirectories() {
             const errorMsg = `Error: Approved folder ${dir} is not a directory`;
             console.error(errorMsg);
             // In MCP mode, don't exit - just skip invalid directories
-            if (!isMCP) {
+            if (!_mcpMode) {
               process.exit(1);
             }
           }
@@ -349,7 +365,7 @@ async function initializeDirectories() {
           const errorMsg = `Error accessing approved folder ${dir}: ${error}`;
           console.error(errorMsg);
           // In MCP mode, don't exit - just skip invalid directories
-          if (!isMCP) {
+          if (!_mcpMode) {
             process.exit(1);
           }
         }
@@ -357,7 +373,7 @@ async function initializeDirectories() {
     );
 
     // Only log initialization if not running under MCP
-    if (!isMCP) {
+    if (!_mcpMode) {
       console.error(
         `Initialized with ${allowedDirectories.length} approved ${
           allowedDirectories.length === 1 ? "directory" : "directories"
@@ -393,7 +409,7 @@ async function initializeDirectories() {
             const errorMsg = `Error: Legacy directory ${dir} is not a directory`;
             console.error(errorMsg);
             // In MCP mode, don't exit - just skip invalid directories
-            if (!isMCP) {
+            if (!_mcpMode) {
               process.exit(1);
             }
           }
@@ -401,7 +417,7 @@ async function initializeDirectories() {
           const errorMsg = `Error accessing legacy directory ${dir}: ${error}`;
           console.error(errorMsg);
           // In MCP mode, don't exit - just skip invalid directories
-          if (!isMCP) {
+          if (!_mcpMode) {
             process.exit(1);
           }
         }
@@ -428,7 +444,7 @@ async function initializeDirectories() {
   // Priority 1: --approved-commands from CLI (supersedes .env)
   if (approvedCommandsFromArgs.length > 0) {
     finalApprovedCommands = approvedCommandsFromArgs;
-    if (!isMCP) {
+    if (!_mcpMode) {
       console.error(
         `  Approved commands (from CLI): ${finalApprovedCommands.join(", ")}`
       );
@@ -443,7 +459,7 @@ async function initializeDirectories() {
         finalApprovedCommands = process.env.APPROVED_COMMANDS.split(",")
           .map((c) => c.trim())
           .filter((c) => c.length > 0);
-        if (!isMCP) {
+        if (!_mcpMode) {
           console.error(
             `  Approved commands (from .env): ${finalApprovedCommands.join(
               ", "
@@ -452,7 +468,7 @@ async function initializeDirectories() {
         }
       }
     } catch (error) {
-      if (!isMCP) {
+      if (!_mcpMode) {
         console.error(
           "  Note: Could not load .env file (this is okay if using CLI args)"
         );
@@ -463,7 +479,7 @@ async function initializeDirectories() {
   // Initialize shell tool with approved commands
   if (finalApprovedCommands.length > 0) {
     initializeShellTool(finalApprovedCommands);
-    if (!isMCP) {
+    if (!_mcpMode) {
       console.error(
         `Initialized shell tool with ${finalApprovedCommands.length} approved command(s)`
       );
@@ -471,7 +487,7 @@ async function initializeDirectories() {
   } else {
     initializeShellTool([]);
     // Only log shell initialization if not running under MCP
-    if (!isMCP) {
+    if (!_mcpMode) {
       console.error(
         "Shell tool initialized with no pre-approved commands (all commands require approval)"
       );
@@ -802,6 +818,9 @@ server.oninitialized = async () => {
 
 // Start server
 export async function runServer() {
+  // Parse arguments here (not at module level) to ensure console suppression is active
+  directoryArgs = parseArguments();
+
   // Initialize directories before starting server
   // BUT: Don't exit on errors during MCP mode - just log and continue
   try {
@@ -809,11 +828,7 @@ export async function runServer() {
   } catch (error) {
     // In MCP mode, don't crash the server on init errors
     // Just continue with empty configuration
-    const isMCP =
-      (!process.stdin.isTTY && !process.stdout.isTTY) ||
-      process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio"));
-
-    if (!isMCP) {
+    if (!_mcpMode) {
       // In non-MCP mode, we can show errors and exit
       throw error;
     }
