@@ -521,7 +521,9 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => {
   const clientCapabilities = request.params.capabilities;
 
   return {
-    protocolVersion: LATEST_PROTOCOL_VERSION,
+    // CRITICAL: Return the protocol version the CLIENT requested, not LATEST
+    // Claude Desktop only supports 2025-06-18 and will disconnect if we return 2025-11-25
+    protocolVersion: request.params.protocolVersion,
     capabilities: {
       tools: {
         listChanged: true,
