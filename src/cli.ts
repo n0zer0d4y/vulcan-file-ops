@@ -10,9 +10,15 @@ const isHelpOrVersion = process.argv.some(
   (arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v"
 );
 
+// MCP mode detection: suppress console if ANY of these are true:
+// 1. stdin is piped/redirected (not a TTY) - MCP clients pipe JSON-RPC via stdin
+// 2. stdout is piped/redirected (not a TTY) - MCP clients read JSON-RPC from stdout
+// 3. argv contains "mcp" or "stdio" - explicit MCP mode indicator
+// Using OR (||) instead of AND (&&) because MCP clients may only pipe one direction
 const isMCP =
   !isHelpOrVersion &&
-  ((!process.stdin.isTTY && !process.stdout.isTTY) ||
+  (!process.stdin.isTTY ||
+    !process.stdout.isTTY ||
     process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio")));
 
 if (isMCP) {
