@@ -510,8 +510,10 @@ const server = new Server(
       tools: {
         listChanged: true,
       },
-      resources: {},
-      prompts: {},
+      // CRITICAL: Do NOT declare resources or prompts capabilities
+      // We don't implement handlers for resources/list or prompts/list
+      // Declaring them causes Claude Desktop to call these methods,
+      // receive "Method not found" errors, and fail to enable the toggle
     },
   }
 );
@@ -528,8 +530,7 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => {
       tools: {
         listChanged: true,
       },
-      resources: {},
-      prompts: {},
+      // CRITICAL: Do NOT declare resources or prompts - we don't implement them
     },
     serverInfo: {
       name: "vulcan-file-ops",

@@ -9,6 +9,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.10] - 2026-01-31
+
+### Fixed
+
+- **CRITICAL**: Fixed MCP server toggle failure in Claude Desktop caused by capability mismatch
+  - **Root Cause**: Server declared `resources: {}` and `prompts: {}` capabilities but had NO handlers for `resources/list` and `prompts/list` methods
+  - Claude Desktop calls these methods after initialization, receives "Method not found" (-32601) errors, and fails to enable the server toggle
+  - **Solution**: Removed `resources` and `prompts` capability declarations from both Server constructor and initialize response
+  - Per MCP specification: A server MUST NOT declare capabilities for features it does not implement
+  - This bug was originally fixed in v1.2.3 but was reintroduced in v1.2.8 when code was restored to v1.2.1 baseline
+- See `local_docs/RCA-Claude-Desktop-MCP-Capability-Mismatch-2026-01-31.md` for complete root cause analysis
+
+### Changed
+
+- Server now only declares `tools` capability (which is fully implemented)
+- Removed unused capability declarations that caused protocol compliance issues
+
+### References
+
+- [MCPcat Guide: Fix MCP Error -32601](https://mcpcat.io/guides/fixing-method-not-found-32601-error/)
+- MCP Protocol Specification: Capability declaration requirements
+
+## [1.2.9] - 2026-01-31
+
+### Fixed
+
+- **CRITICAL**: Fixed protocol version negotiation causing Claude Desktop connection failures
+  - Server now returns the protocol version requested by the client instead of hardcoded `LATEST_PROTOCOL_VERSION`
+  - Claude Desktop requests `2025-06-18` but previous versions returned `2025-11-25`, causing immediate disconnection
+  - This fix ensures compatibility with all MCP clients regardless of their supported protocol version
+
+### Changed
+
+- Protocol version in initialize response now mirrors client's requested version
+- Added documentation comments explaining protocol version negotiation requirements
+
+## [1.2.8] - 2026-01-31
+
+### Changed
+
+- Restored source code to working v1.2.1 baseline
+- Downgraded `@modelcontextprotocol/sdk` from `^1.25.2` to `1.20.0` for stability
+- Removed experimental console suppression changes that caused issues
+
+### Notes
+
+- This release reverts problematic changes while maintaining SDK 1.20.0 compatibility
+
+## [1.2.7] - 2026-01-31
+
+### Fixed
+
+- Downgraded `@modelcontextprotocol/sdk` to `1.20.0` to resolve Claude Desktop compatibility issues
+- SDK 1.25.x introduced breaking changes in stdio transport and protocol handling
+
+### Changed
+
+- Locked SDK version to exact `1.20.0` (removed caret range)
+
+## [1.2.6] - 2026-01-31
+
+### Fixed
+
+- Silenced dotenv debug output that was polluting stdout and corrupting MCP JSON-RPC protocol
+  - Added `quiet: true` option to `dotenv.config()` call
+- Improved MCP mode detection logic
+  - Changed TTY detection from AND to OR logic: now triggers MCP mode if EITHER stdin OR stdout is piped
+  - This fixes edge cases where different shells/platforms report TTY status inconsistently
+
+### Changed
+
+- Console suppression now activates when any standard stream is piped, not just when both are piped
+
+## [1.2.5] - 2026-01-31
+
+### Fixed
+
+- **CRITICAL**: Fixed ES Module execution order bug causing stdout pollution in MCP mode
+  - Console suppression code in `cli.ts` was ineffective due to ES Module static import hoisting
+  - Child modules (including `server/index.ts`) were evaluated BEFORE parent module's top-level code
+  - Moved console suppression to the top of `server/index.ts` before any imports
+  - Deferred `parseArguments()` call from module-level to inside `runServer()` function
+  - Added `--help` and `--version` flag detection to preserve CLI functionality
+- See `local_docs/RCA-Claude-Desktop-MCP-Toggle-Failure-2026-01-31.md` for complete root cause analysis
+
+### Changed
+
+- MCP mode detection now excludes `--help` and `--version` flags to allow CLI usage
+- Reorganized initialization sequence to ensure console suppression happens before any potential output
+
 ## [1.2.4] - 2026-01-21
 
 ### Fixed
