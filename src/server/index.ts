@@ -13,9 +13,15 @@ const _isHelpOrVersion = process.argv.some(
   (arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v"
 );
 
+// MCP mode detection: suppress console if ANY of these are true:
+// 1. stdin is piped/redirected (not a TTY) - MCP clients pipe JSON-RPC via stdin
+// 2. stdout is piped/redirected (not a TTY) - MCP clients read JSON-RPC from stdout
+// 3. argv contains "mcp" or "stdio" - explicit MCP mode indicator
+// Using OR (||) instead of AND (&&) because MCP clients may only pipe one direction
 const _mcpMode =
   !_isHelpOrVersion &&
-  ((!process.stdin.isTTY && !process.stdout.isTTY) ||
+  (!process.stdin.isTTY ||
+    !process.stdout.isTTY ||
     process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio")));
 
 if (_mcpMode) {
@@ -453,7 +459,8 @@ async function initializeDirectories() {
     // Priority 2: Load from .env file
     try {
       const envPath = path.join(process.cwd(), ".env");
-      dotenv.config({ path: envPath });
+      // CRITICAL: quiet: true prevents dotenv from logging to stdout which corrupts MCP JSON-RPC
+      dotenv.config({ path: envPath, quiet: true });
 
       if (process.env.APPROVED_COMMANDS) {
         finalApprovedCommands = process.env.APPROVED_COMMANDS.split(",")
