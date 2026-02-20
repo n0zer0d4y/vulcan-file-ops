@@ -1,5 +1,26 @@
 #!/usr/bin/env node
 
+// CRITICAL: Console suppression MUST happen BEFORE any other imports
+// due to ES Module static import execution order (imports are evaluated BEFORE top-level code).
+// Detection: stdin/stdout are NOT TTY (piped/redirected) OR explicit MCP flags are present.
+// Note: We exclude help/version flags to allow CLI usage even when piped.
+const _isMCP =
+  ((!process.stdin.isTTY && !process.stdout.isTTY) ||
+    process.argv.some(
+      (arg) =>
+        arg.includes("mcp") || arg.includes("stdio") || arg.includes("inspector")
+    )) &&
+  !process.argv.some((arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v");
+
+if (_isMCP) {
+  const noop = () => {};
+  console.log = noop;
+  console.error = noop;
+  console.warn = noop;
+  console.info = noop;
+  console.debug = noop;
+}
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -262,24 +283,13 @@ function parseArguments() {
   return directories;
 }
 
-const directoryArgs = parseArguments();
+// Defer parsing until runServer is called
+let directoryArgs: string[] = [];
 
 // Async initialization function to be called in runServer()
 async function initializeDirectories() {
   // Detect MCP mode: stdin/stdout are NOT TTY (piped) = MCP mode
-  const isMCP =
-    (!process.stdin.isTTY && !process.stdout.isTTY) ||
-    process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio"));
-
-  // During MCP operation, suppress ALL console output to prevent protocol corruption
-  if (isMCP) {
-    const noop = () => {};
-    console.error = noop;
-    console.log = noop;
-    console.warn = noop;
-    console.info = noop;
-    console.debug = noop;
-  }
+  const isMCP = _isMCP;
 
   if (
     !isMCP &&
@@ -808,6 +818,7 @@ export async function runServer() {
   // Initialize directories before starting server
   // BUT: Don't exit on errors during MCP mode - just log and continue
   try {
+    directoryArgs = parseArguments();
     await initializeDirectories();
   } catch (error) {
     // In MCP mode, don't crash the server on init errors

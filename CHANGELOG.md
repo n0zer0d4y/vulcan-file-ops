@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.11] - 2026-02-21
+
+### Fixed
+
+- **CRITICAL**: Fixed MCP server toggle failure and "no tools configured" error in Claude Desktop and Cursor.
+  - **Root Cause**: ES Module execution order caused `parseArguments()` to run before console suppression logic. This allowed warning messages to be emitted to the protocol stream, corrupting JSON-RPC communication.
+  - **Solution**: Moved console suppression to the absolute top of `server/index.ts` and deferred argument parsing to the `runServer()` function.
+  - Improved MCP mode detection to exclude `--help` and `--version` flags.
+- See `local_docs/RCA-MCP-Toggle-Failure-Stdout-Pollution-2026-02-21.md` for full details.
+
 ## [1.2.10] - 2026-01-31
 
 ### Fixed
