@@ -1,10 +1,10 @@
 {
   "name": "@n0zer0d4y/vulcan-file-ops",
-  "version": "1.2.11",
+  "version": "1.2.13",
   "mcpName": "io.github.n0zer0d4y/vulcan-file-ops",
   "description": "MCP server for AI assistants: read, write, edit, and manage files securely on local filesystem.",
   "license": "MIT",
-  "author": "Lloyd Barcatan",
+  "author": "n0zer0d4y",
   "homepage": "https://github.com/n0zer0d4y/vulcan-file-ops",
   "repository": {
     "type": "git",
@@ -79,6 +79,7 @@
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "pdfmake": "^0.2.20",
+    "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.1"
   },
   "devDependencies": {

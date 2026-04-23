@@ -42,6 +42,11 @@ import {
   shouldIgnoreFolder,
   getIgnoredFolders,
 } from "../utils/lib.js";
+import {
+  createEmptyObjectSchema,
+  createPathArraySchema,
+  sanitizeToolInputSchema,
+} from "../utils/tool-schema.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 
@@ -84,7 +89,16 @@ export function getFileSystemTools() {
         "Create single or multiple directories with recursive parent creation " +
         "(like Unix 'mkdir -p'). Idempotent - won't error if directories exist. " +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(MakeDirectoryArgsSchema) as ToolInput,
+      inputSchema: {
+        type: "object",
+        properties: {
+          paths: createPathArraySchema(
+            "Directory paths to create. For maximum MCP client compatibility, provide an array even when creating a single directory."
+          ),
+        },
+        required: ["paths"],
+        additionalProperties: false,
+      } as ToolInput,
     },
     {
       name: "list_directory",
@@ -94,7 +108,9 @@ export function getFileSystemTools() {
         "Supports simple listings, detailed views with sizes/timestamps, hierarchical " +
         "tree display, and structured JSON output. Automatically filters globally " +
         "configured ignored folders. Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(ListDirectoryArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(ListDirectoryArgsSchema) as ToolInput
+      ),
     },
     {
       name: "move_file",
@@ -104,7 +120,9 @@ export function getFileSystemTools() {
         "Fails safely if the destination path already exists to prevent accidental overwrites. " +
         "Can also perform simple same-directory renames. " +
         "Both source and destination must be within allowed directories.",
-      inputSchema: zodToJsonSchema(MoveFileArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(MoveFileArgsSchema) as ToolInput
+      ),
     },
     {
       name: "get_file_info",
@@ -113,7 +131,9 @@ export function getFileSystemTools() {
         "Provides detailed information including size, timestamps (creation and last modification), permissions, and entry type. " +
         "Perfect for inspecting file properties and attributes without accessing the actual content. " +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(GetFileInfoArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(GetFileInfoArgsSchema) as ToolInput
+      ),
     },
     {
       name: "register_directory",
@@ -122,7 +142,9 @@ export function getFileSystemTools() {
         "to directories specified by the human user during conversation. The directory " +
         "and all its subdirectories will become accessible for all filesystem operations." +
         generateApprovedDirsText(),
-      inputSchema: zodToJsonSchema(RegisterDirectoryArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(RegisterDirectoryArgsSchema) as ToolInput
+      ),
     },
     {
       name: "list_allowed_directories",
@@ -131,11 +153,7 @@ export function getFileSystemTools() {
         "Note that subdirectories within listed paths are implicitly accessible as well. " +
         "Use this to determine available filesystem scope and plan operations accordingly before attempting file access." +
         generateApprovedDirsText(),
-      inputSchema: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
+      inputSchema: createEmptyObjectSchema() as ToolInput,
     },
     {
       name: "file_operations",
@@ -192,7 +210,9 @@ export function getFileSystemTools() {
         "Operations are processed concurrently for performance. " +
         "Maximum 100 paths per operation. " +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(DeleteFilesArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(DeleteFilesArgsSchema) as ToolInput
+      ),
     },
   ];
 }

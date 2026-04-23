@@ -18,6 +18,7 @@ import {
 import { validatePath, getAllowedDirectories } from "../utils/lib.js";
 import { extractPathsFromCommand } from "../utils/command-path-extraction.js";
 import { isPathWithinAllowedDirectories } from "../utils/path-validation.js";
+import { sanitizeToolInputSchema } from "../utils/tool-schema.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
@@ -85,7 +86,9 @@ export function getShellTools() {
         `If no workdir is specified, the server's current working directory will be used and validated.` +
         approvedCommandsText +
         `\n\nIMPORTANT: Always provide a clear description of what the command does and why it's needed.`,
-      inputSchema: zodToJsonSchema(ShellCommandArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(ShellCommandArgsSchema) as ToolInput
+      ),
     },
   ];
 }

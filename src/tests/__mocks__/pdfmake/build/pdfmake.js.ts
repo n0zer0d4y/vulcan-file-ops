@@ -23,10 +23,42 @@ interface PdfMakeStatic {
   ): PdfMakeDocument;
 }
 
+function flattenText(value: any): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => flattenText(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  if (typeof value.text === "string") {
+    return [value.text];
+  }
+
+  return Object.values(value).flatMap((item) => flattenText(item));
+}
+
 // Create a mock PDF buffer that starts with %PDF (valid PDF header)
 // Makes it substantial enough to pass size checks (> 1000 bytes)
-function createMockPdfBuffer(): Buffer {
+function createMockPdfBuffer(documentDefinition?: any): Buffer {
   const pdfHeader = Buffer.from("%PDF-1.4\n");
+  const extractedText = flattenText(documentDefinition?.content)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const title = String(documentDefinition?.info?.title || "").trim();
+  const metadata = Buffer.from(
+    [
+      `% VULCAN_MOCK_TEXT: ${extractedText || "This is mocked PDF content."}`,
+      `% VULCAN_MOCK_TITLE: ${title || "Mock PDF Title"}`,
+      "",
+    ].join("\n"),
+  );
 
   // Create a more substantial mock PDF body with typical PDF objects
   const pdfObjects = Buffer.from(`
@@ -85,7 +117,7 @@ startxref
 `);
 
   const pdfFooter = Buffer.from("\n%%EOF\n");
-  return Buffer.concat([pdfHeader, pdfObjects, pdfFooter]);
+  return Buffer.concat([pdfHeader, metadata, pdfObjects, pdfFooter]);
 }
 
 const pdfMake: PdfMakeStatic = {
@@ -101,12 +133,12 @@ const pdfMake: PdfMakeStatic = {
       getBuffer: (callback: (buffer: Buffer) => void) => {
         // Simulate async PDF generation
         setTimeout(() => {
-          callback(createMockPdfBuffer());
+          callback(createMockPdfBuffer(documentDefinition));
         }, 10);
       },
       getBase64: (callback: (base64: string) => void) => {
         setTimeout(() => {
-          callback(createMockPdfBuffer().toString("base64"));
+          callback(createMockPdfBuffer(documentDefinition).toString("base64"));
         }, 10);
       },
       download: (defaultFileName?: string) => {

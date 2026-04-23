@@ -5,7 +5,7 @@
 // Detection: stdin/stdout are NOT TTY (piped/redirected) OR explicit MCP flags are present.
 // Note: We exclude help/version flags to allow CLI usage even when piped.
 const isMCP =
-  ((!process.stdin.isTTY && !process.stdout.isTTY) ||
+  ((!process.stdin.isTTY || !process.stdout.isTTY) ||
     process.argv.some(
       (arg) =>
         arg.includes("mcp") || arg.includes("stdio") || arg.includes("inspector")
