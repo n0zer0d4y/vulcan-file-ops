@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
@@ -302,15 +302,27 @@ describe("make_directory tool", () => {
 
       // Simulate buggy MCP client behavior - array is stringified
       const stringifiedPaths = JSON.stringify(paths);
+      const consoleErrorSpy = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
 
-      const result = await handleFileSystemTool("make_directory", {
-        paths: stringifiedPaths, // Passing stringified array instead of actual array
-      });
+      try {
+        const result = await handleFileSystemTool("make_directory", {
+          paths: stringifiedPaths, // Passing stringified array instead of actual array
+        });
 
-      expect(result.content[0].text).toContain("Successfully created 3 directories");
+        expect(result.content[0].text).toContain(
+          "Successfully created 3 directories",
+        );
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          "[INFO] make_directory: Detected and corrected stringified array parameter",
+        );
 
-      for (const p of paths) {
-        await expect(fs.access(p)).resolves.toBeUndefined();
+        for (const p of paths) {
+          await expect(fs.access(p)).resolves.toBeUndefined();
+        }
+      } finally {
+        consoleErrorSpy.mockRestore();
       }
     });
 

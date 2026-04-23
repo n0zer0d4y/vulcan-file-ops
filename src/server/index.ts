@@ -5,7 +5,7 @@
 // Detection: stdin/stdout are NOT TTY (piped/redirected) OR explicit MCP flags are present.
 // Note: We exclude help/version flags to allow CLI usage even when piped.
 const _isMCP =
-  ((!process.stdin.isTTY && !process.stdout.isTTY) ||
+  ((!process.stdin.isTTY || !process.stdout.isTTY) ||
     process.argv.some(
       (arg) =>
         arg.includes("mcp") || arg.includes("stdio") || arg.includes("inspector")
@@ -34,9 +34,17 @@ import {
   type Root,
 } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs/promises";
+import { readFileSync } from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import dotenv from "dotenv";
-import packageJson from "../../package.json" with { type: "json" };
+
+// Manual JSON import for compatibility with older Node.js versions
+// (native 'import ... with { type: "json" }' requires Node 20.10+ or 18.20+)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const packageJson = JSON.parse(
+  readFileSync(path.resolve(__dirname, "../../package.json"), "utf-8")
+);
 import { normalizePath, expandHome } from "../utils/path-utils.js";
 import { getValidRootDirectories } from "../utils/roots-utils.js";
 import {
@@ -447,7 +455,7 @@ async function initializeDirectories() {
     // Priority 2: Load from .env file
     try {
       const envPath = path.join(process.cwd(), ".env");
-      dotenv.config({ path: envPath });
+      dotenv.config({ path: envPath, quiet: true });
 
       if (process.env.APPROVED_COMMANDS) {
         finalApprovedCommands = process.env.APPROVED_COMMANDS.split(",")
@@ -824,8 +832,13 @@ export async function runServer() {
     // In MCP mode, don't crash the server on init errors
     // Just continue with empty configuration
     const isMCP =
-      (!process.stdin.isTTY && !process.stdout.isTTY) ||
-      process.argv.some((arg) => arg.includes("mcp") || arg.includes("stdio"));
+      (!process.stdin.isTTY || !process.stdout.isTTY) ||
+      process.argv.some(
+        (arg) =>
+          arg.includes("mcp") ||
+          arg.includes("stdio") ||
+          arg.includes("inspector")
+      );
 
     if (!isMCP) {
       // In non-MCP mode, we can show errors and exit

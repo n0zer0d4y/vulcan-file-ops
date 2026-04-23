@@ -121,8 +121,7 @@ describe("write_multiple_files tool", () => {
     ).rejects.toThrow("At least one file must be provided");
   });
 
-  // NOTE: Skipped due to HTML-to-PDF Jest limitation (works in production)
-  it.skip("should handle HTML to PDF conversion", async () => {
+  it("should handle HTML to PDF conversion", async () => {
     const htmlContent = `
       <html>
         <body>
@@ -180,8 +179,7 @@ describe("write_multiple_files tool", () => {
     expect(stats.size).toBeGreaterThan(0);
   }, 15000);
 
-  // NOTE: Skipped due to HTML-to-PDF Jest limitation (works in production)
-  it.skip("should handle mixed HTML and plain text documents", async () => {
+  it("should handle mixed HTML and plain text documents", async () => {
     const files = [
       {
         path: path.join(TEST_DIR, "html-doc.pdf"),
