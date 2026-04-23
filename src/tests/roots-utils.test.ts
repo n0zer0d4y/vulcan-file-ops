@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import { getValidRootDirectories } from "../utils/roots-utils.js";
 import {
   mkdtempSync,
@@ -16,8 +16,11 @@ describe("getValidRootDirectories", () => {
   let testDir2: string;
   let testDir3: string;
   let testFile: string;
+  let consoleErrorSpy: ReturnType<typeof jest.spyOn>;
 
   beforeEach(() => {
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
     // Create test directories
     testDir1 = realpathSync(mkdtempSync(join(tmpdir(), "mcp-roots-test1-")));
     testDir2 = realpathSync(mkdtempSync(join(tmpdir(), "mcp-roots-test2-")));
@@ -33,6 +36,7 @@ describe("getValidRootDirectories", () => {
     rmSync(testDir1, { recursive: true, force: true });
     rmSync(testDir2, { recursive: true, force: true });
     rmSync(testDir3, { recursive: true, force: true });
+    consoleErrorSpy.mockRestore();
   });
 
   describe("valid directory processing", () => {
@@ -84,6 +88,7 @@ describe("getValidRootDirectories", () => {
       expect(result).not.toContain(testFile);
       expect(result).not.toContain(invalidPath);
       expect(result).toHaveLength(1);
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(3);
     });
   });
 });

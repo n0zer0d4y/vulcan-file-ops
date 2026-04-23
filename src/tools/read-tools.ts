@@ -20,6 +20,10 @@ import {
   rangeFile,
 } from "../utils/lib.js";
 import { isDocumentFile, parseDocument } from "../utils/document-parser.js";
+import {
+  createPathArraySchema,
+  sanitizeToolInputSchema,
+} from "../utils/tool-schema.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
@@ -54,7 +58,9 @@ export function getReadTools() {
         "range (lines from startLine to endLine, inclusive, 1-indexed). " +
         "Document files ignore mode parameters and always return full content. " +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(ReadFileArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(ReadFileArgsSchema) as ToolInput
+      ),
     },
     {
       name: "attach_image",
@@ -66,7 +72,16 @@ export function getReadTools() {
         "Supports PNG, JPEG, GIF, WebP, BMP, and SVG formats. " +
         "Note: This requires the MCP client to support vision capabilities. " +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(AttachImageArgsSchema) as ToolInput,
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: createPathArraySchema(
+            "Path(s) to image file(s) to attach for AI vision analysis. For maximum MCP client compatibility, provide an array even when attaching a single image."
+          ),
+        },
+        required: ["path"],
+        additionalProperties: false,
+      } as ToolInput,
     },
     {
       name: "read_multiple_files",
@@ -78,7 +93,9 @@ export function getReadTools() {
         "Document files ignore mode parameters and return full content. " +
         "Processes files concurrently for performance. Maximum 50 files per operation. " +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(ReadMultipleFilesArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(ReadMultipleFilesArgsSchema) as ToolInput
+      ),
     },
   ];
 }

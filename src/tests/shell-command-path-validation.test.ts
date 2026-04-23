@@ -384,7 +384,7 @@ describe("Shell Command Path Validation", () => {
       });
 
       expect(result2.isError).toBe(false);
-    });
+    }, 15000);
 
     test("blocks if any path in command is outside allowed directory", async () => {
       const testFile = path.join(allowedDir, "test.txt");

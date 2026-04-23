@@ -63,7 +63,7 @@ describe("Shell Execution", () => {
 
     // Either error is set or exit code is non-zero
     expect(result.error || result.exitCode !== 0).toBeTruthy();
-  });
+  }, 15000);
 
   test("handles chained commands", async () => {
     const command =

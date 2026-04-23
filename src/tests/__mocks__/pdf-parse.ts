@@ -17,13 +17,19 @@ export default async function pdfParse(buffer: Buffer): Promise<{
     CreationDate?: string;
   };
 }> {
+  const bufferText = buffer.toString("latin1");
+  const textMatch = bufferText.match(/VULCAN_MOCK_TEXT:\s*([^\r\n]+)/);
+  const titleMatch = bufferText.match(/VULCAN_MOCK_TITLE:\s*([^\r\n]+)/);
+
   // Return mocked PDF content
   return {
-    text: "This is mocked PDF content.\nLine 2 of PDF.\nLine 3 of PDF.",
+    text:
+      textMatch?.[1]?.trim() ||
+      "This is mocked PDF content.\nLine 2 of PDF.\nLine 3 of PDF.",
     numpages: 1,
     info: {
       Author: "Mock Author",
-      Title: "Mock PDF Title",
+      Title: titleMatch?.[1]?.trim() || "Mock PDF Title",
       Subject: "Mock Subject",
       Creator: "Mock Creator",
       Producer: "Mock Producer",

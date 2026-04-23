@@ -124,7 +124,10 @@ This server can be used directly with npx (recommended) or installed globally/lo
 
 ### Basic Configuration
 
-Add to your MCP client configuration (e.g., `claude_desktop_config.json`):
+Add to your MCP client configuration.
+
+For JSON-based clients such as Claude Desktop and Cursor, use their `mcpServers` JSON format.
+For Codex, use `C:\Users\<username>\.codex\config.toml` and the `mcp_servers` TOML table format shown below.
 
 #### Option 1: Using npx (Recommended - No Installation Required)
 
@@ -133,10 +136,20 @@ Add to your MCP client configuration (e.g., `claude_desktop_config.json`):
   "mcpServers": {
     "vulcan-file-ops": {
       "command": "npx",
-      "args": ["@n0zer0d4y/vulcan-file-ops"]
+      "args": ["-y", "@n0zer0d4y/vulcan-file-ops"]
     }
   }
 }
+```
+
+**Codex (`config.toml`)**
+
+```toml
+[mcp_servers.vulcan_file_ops]
+command = "npx"
+args = ["-y", "@n0zer0d4y/vulcan-file-ops"]
+enabled = true
+startup_timeout_sec = 120.0
 ```
 
 #### Option 2: Using Global Installation
@@ -184,14 +197,33 @@ Then configure your MCP client:
 {
   "mcpServers": {
     "vulcan-file-ops": {
-      "command": "vulcan-file-ops",
-      "args": ["--approved-folders", "/path/to/your/allowed/directories"]
+      "command": "node",
+      "args": [
+        "/absolute/path/to/vulcan-file-ops/dist/cli.js",
+        "--approved-folders",
+        "/path/to/your/allowed/directories"
+      ]
     }
   }
 }
 ```
 
-**Note:** The `vulcan-file-ops` command will be available in your PATH after building, or you can use the full path: `./dist/cli.js`
+**Codex (`config.toml`)**
+
+```toml
+[mcp_servers.vulcan_file_ops]
+command = "node"
+args = [
+  'C:\absolute\path\to\vulcan-file-ops\dist\cli.js',
+  "--approved-folders",
+  'C:\path\to\your\allowed\directories'
+]
+cwd = 'C:\absolute\path\to\vulcan-file-ops'
+enabled = true
+startup_timeout_sec = 120.0
+```
+
+**Note:** For local repository execution, prefer `node dist/cli.js` with an absolute path. This works reliably in Codex and avoids PATH ambiguity.
 
 ### Advanced Configuration
 
@@ -207,6 +239,7 @@ Pre-configure specific directories for immediate access on server start:
     "vulcan-file-ops": {
       "command": "npx",
       "args": [
+        "-y",
         "@n0zer0d4y/vulcan-file-ops",
         "--approved-folders",
         "/Users/username/projects",
@@ -225,6 +258,7 @@ Pre-configure specific directories for immediate access on server start:
     "vulcan-file-ops": {
       "command": "npx",
       "args": [
+        "-y",
         "@n0zer0d4y/vulcan-file-ops",
         "--approved-folders",
         "C:/Users/username/projects",
@@ -252,6 +286,22 @@ For users running from a cloned repository (after `npm run build`):
     }
   }
 }
+```
+
+**Codex with Approved Folders (`config.toml`)**
+
+```toml
+[mcp_servers.vulcan_file_ops]
+command = "node"
+args = [
+  'C:\absolute\path\to\vulcan-file-ops\dist\cli.js',
+  "--approved-folders",
+  'C:\Users\username\projects',
+  'C:\Users\username\documents'
+]
+cwd = 'C:\absolute\path\to\vulcan-file-ops'
+enabled = true
+startup_timeout_sec = 120.0
 ```
 
 **Path Format Note:**

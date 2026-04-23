@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.13] - 2026-04-23
+
+### Fixed
+
+- Resolved the remaining MCP client tool discovery failure introduced after the SDK upgrade.
+  - Tool schemas exposed through `tools/list` are now normalized for stricter MCP clients.
+  - Removed client-hostile schema constructs from published tool input schemas, including `$schema`, `$ref`, `anyOf`, `oneOf`, and `allOf`.
+  - Replaced the highest-risk wire schemas with explicit compatibility-first object schemas for `attach_image` and `make_directory`.
+  - Preserved runtime backward compatibility while tightening the schemas advertised to clients.
+- Fixed residual MCP mode detection drift so stdio mode is triggered reliably in local and `npx` execution paths.
+- Added `zod` as a direct runtime dependency to avoid install-time fragility in clean environments and `npx` usage.
+- Synchronized package metadata so published registry metadata and local package metadata report the same release version.
+- Re-enabled and stabilized the previously skipped PDF-related Jest coverage.
+  - Enabled the 10 skipped document tests for PDF read, HTML-to-PDF write, mixed document batches, and PDF round-trip paths.
+  - Updated Jest PDF mocks so document tests exercise meaningful content paths instead of placeholder-only buffers.
+  - Suppressed expected negative-path test diagnostics inside tests so successful runs no longer look like runtime failures.
+- Added a regression test to prevent incompatible tool schema shapes from reappearing in future releases.
+
+### Changed
+
+- Documented the Codex-specific MCP configuration format in the README alongside the JSON-based client examples.
+- Updated `npx` examples to use `-y` explicitly for non-interactive client execution.
+
+## [1.2.12] - 2026-02-21
+
+### Fixed
+
+- **CRITICAL**: Fixed MCP server toggle failure and "no tools configured" error caused by Node.js version incompatibility and restrictive MCP detection.
+  - **Node.js Compatibility**: Replaced `import ... with { type: "json" }` with manual `fs.readFileSync` for `package.json` to support Node.js versions earlier than 20.10.0 and 18.20.0 (including Node 14/16).
+  - **Robust MCP Detection**: Changed TTY detection from AND to OR logic. The server now enters MCP mode (suppressing console output) if *either* stdin or stdout is redirected, improving reliability on Windows when run via `npx`.
+  - **Silenced Dotenv**: Added `quiet: true` to `dotenv.config()` to prevent any leakage into the protocol stream.
+- See `local_docs/RCA-MCP-Toggle-Failure-Node-Compatibility-2026-02-21.md` for full details.
+
 ## [1.2.11] - 2026-02-21
 
 ### Fixed

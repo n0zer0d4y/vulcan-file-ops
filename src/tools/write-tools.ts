@@ -23,6 +23,7 @@ import {
   convertHTMLToPDF,
   convertHTMLToDOCX,
 } from "../utils/html-to-document.js";
+import { sanitizeToolInputSchema } from "../utils/tool-schema.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
@@ -344,7 +345,9 @@ export function getWriteTools() {
         "- Correct: Use actual line breaks in your JSON string value\n" +
         "\n" +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(WriteFileArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(WriteFileArgsSchema) as ToolInput
+      ),
     },
     {
       name: "edit_file",
@@ -378,7 +381,9 @@ export function getWriteTools() {
         "- The MCP/JSON layer handles encoding automatically\n" +
         "- Using \\n literally will search for/write backslash+n characters (wrong!)\n\n" +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(EditFileArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(EditFileArgsSchema) as ToolInput
+      ),
     },
     {
       name: "write_multiple_files",
@@ -395,7 +400,9 @@ export function getWriteTools() {
         "- Each file's content will be written exactly as provided in the string\n" +
         "\n" +
         "Only works within allowed directories.",
-      inputSchema: zodToJsonSchema(WriteMultipleFilesArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(WriteMultipleFilesArgsSchema) as ToolInput
+      ),
     },
   ];
 }
