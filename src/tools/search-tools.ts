@@ -14,6 +14,7 @@ import {
   getIgnoredFolders,
   type GrepOptions,
 } from "../utils/lib.js";
+import { sanitizeToolInputSchema } from "../utils/tool-schema.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
@@ -28,7 +29,9 @@ export function getSearchTools() {
         "Use simple patterns like '*.ext' for current directory matches, or '**/*.ext' for deep subdirectory searches. " +
         "Returns absolute paths to all discovered items. Excellent for locating files when exact paths are unknown. " +
         "Only searches within allowed directories.",
-      inputSchema: zodToJsonSchema(SearchFilesArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(SearchFilesArgsSchema) as ToolInput
+      ),
     },
     {
       name: "grep_files",
@@ -37,7 +40,9 @@ export function getSearchTools() {
         "Supports: regex patterns, case-insensitive (-i), context lines (-A/-B/-C), file type filters (type: js/py/ts/etc), glob patterns, multiline mode. " +
         "Output modes: content (lines+context), files_with_matches (paths only), count (match counts). " +
         "Respects ignored folders. Use head_limit to cap results. Only searches within allowed directories.",
-      inputSchema: zodToJsonSchema(GrepArgsSchema) as ToolInput,
+      inputSchema: sanitizeToolInputSchema(
+        zodToJsonSchema(GrepArgsSchema) as ToolInput
+      ),
     },
   ];
 }

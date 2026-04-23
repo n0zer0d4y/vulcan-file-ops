@@ -42,8 +42,7 @@ describe("read_file with documents", () => {
     await cleanupTestEnvironment();
   });
 
-  // FIXME: PDF parsing broken due to pdfjs-dist import.meta issue in Jest
-  test.skip("reads PDF through read_file", async () => {
+  test("reads PDF through read_file", async () => {
     const result = await handleReadTool("read_file", {
       path: path.join(TEST_FIXTURES_DIR, "sample.pdf"),
     });
@@ -70,8 +69,7 @@ describe("read_file with documents", () => {
     expect(content.text).not.toContain("Format:");
   });
 
-  // FIXME: PDF parsing broken due to pdfjs-dist import.meta issue in Jest
-  test.skip("mode parameters ignored for PDF documents", async () => {
+  test("mode parameters ignored for PDF documents", async () => {
     const resultFull = await handleReadTool("read_file", {
       path: path.join(TEST_FIXTURES_DIR, "sample.pdf"),
       mode: "full",
@@ -129,8 +127,7 @@ describe("read_multiple_files with documents", () => {
     await cleanupTestEnvironment();
   });
 
-  // FIXME: PDF parsing broken due to pdfjs-dist import.meta issue in Jest
-  test.skip("reads mixed text and document files", async () => {
+  test("reads mixed text and document files", async () => {
     const result = await handleReadTool("read_multiple_files", {
       files: [
         { path: path.join(FIXTURES_DIR, "text.txt") },
@@ -184,8 +181,7 @@ describe("read_multiple_files with documents", () => {
     expect(text).toContain("Error");
   }, 10000);
 
-  // FIXME: PDF parsing broken due to pdfjs-dist import.meta issue in Jest
-  test.skip("returns consistent format for document files", async () => {
+  test("returns consistent format for document files", async () => {
     const result = await handleReadTool("read_multiple_files", {
       files: [{ path: path.join(TEST_FIXTURES_DIR, "sample.pdf") }],
     });
