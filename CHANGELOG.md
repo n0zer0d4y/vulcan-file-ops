@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.2.14] - 2026-05-16
+
+### Fixed
+
+- **CRITICAL**: Fixed initialization deadlock with `claude-ai` v0.1.0 client (Claude Desktop web client, protocol `2025-11-25`).
+  - **Root Cause**: A custom `setRequestHandler(InitializeRequestSchema, ...)` was overriding the SDK's internal `_oninitialize` handler. This broke the SDK's state machine: `_clientCapabilities` and `_clientVersion` were never set, and protocol version negotiation was bypassed — the server echoed back the client's requested version verbatim rather than responding with the highest version it actually supports. The new client's stricter handshake exposed this latent defect.
+  - **Fix**: Removed the custom initialize handler and restored the SDK's built-in `_oninitialize`. The server now correctly negotiates `2025-06-18` when a client requests `2025-11-25`, which the client accepts per the MCP spec.
+  - **Instructions**: Server instructions (`generateServerDescription()`) are now injected into the SDK's `_instructions` field after directory initialization in `runServer()`, so they remain present in the initialize response without requiring a custom handler.
+- Fixed `oninitialized` callback blocking the MCP handshake. The `listRoots()` call inside `oninitialized` was previously awaited, creating a potential deadlock (client won't respond to `roots/list` until after `initialized` is acknowledged, but the callback blocked acknowledgement). Changed to a detached fire-and-forget promise.
+
 ## [1.2.13] - 2026-04-23
 
 ### Fixed
