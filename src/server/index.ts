@@ -26,7 +26,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  InitializeRequestSchema,
   PingRequestSchema,
   ToolSchema,
   RootsListChangedNotificationSchema,
@@ -536,27 +535,11 @@ const server = new Server(
   }
 );
 
-// Initialize handler - required for MCP protocol
-server.setRequestHandler(InitializeRequestSchema, async (request) => {
-  const clientCapabilities = request.params.capabilities;
-
-  return {
-    // CRITICAL: Return the protocol version the CLIENT requested, not LATEST
-    // Claude Desktop only supports 2025-06-18 and will disconnect if we return 2025-11-25
-    protocolVersion: request.params.protocolVersion,
-    capabilities: {
-      tools: {
-        listChanged: true,
-      },
-      // CRITICAL: Do NOT declare resources or prompts - we don't implement them
-    },
-    serverInfo: {
-      name: "vulcan-file-ops",
-      version: VERSION,
-    },
-    instructions: generateServerDescription(),
-  };
-});
+// The SDK's built-in initialize handler (_oninitialize) is left in place.
+// Overriding it via setRequestHandler breaks the SDK's internal state machine:
+// _clientCapabilities and _clientVersion never get set, and protocol version
+// negotiation is bypassed (should respond with max supported ≤ client's requested).
+// Instructions are injected at runtime in runServer() after directories initialize.
 
 // Ping handler - for health checks
 server.setRequestHandler(PingRequestSchema, async () => {
@@ -806,18 +789,20 @@ server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
 });
 
 // Handles post-initialization setup, specifically checking for and fetching MCP roots.
-server.oninitialized = async () => {
+// listRoots() is fired detached (no await) so it doesn't block the initialize handshake.
+// Blocking here deadlocks: the client won't respond to roots/list until after initialize
+// completes, but initialize won't complete until this callback returns.
+server.oninitialized = () => {
   const clientCapabilities = server.getClientCapabilities();
 
   if (clientCapabilities?.roots) {
-    try {
-      const response = await server.listRoots();
+    server.listRoots().then(async (response) => {
       if (response && "roots" in response) {
         await updateAllowedDirectoriesFromRoots(response.roots);
       }
-    } catch (error) {
+    }).catch(() => {
       // Silently handle errors - dynamic access will work via register_directory tool
-    }
+    });
   }
 };
 
@@ -846,6 +831,11 @@ export async function runServer() {
     }
     // In MCP mode, silently continue - server can work without approved folders
   }
+
+  // Inject instructions now that directories are known. The SDK's built-in
+  // _oninitialize reads this._instructions when building the initialize response.
+  (server as unknown as { _instructions: string })._instructions =
+    generateServerDescription();
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
