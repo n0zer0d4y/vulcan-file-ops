@@ -1,6 +1,6 @@
 {
   "name": "@n0zer0d4y/vulcan-file-ops",
-  "version": "1.2.13",
+  "version": "1.2.14",
   "mcpName": "io.github.n0zer0d4y/vulcan-file-ops",
   "description": "MCP server for AI assistants: read, write, edit, and manage files securely on local filesystem.",
   "license": "MIT",
