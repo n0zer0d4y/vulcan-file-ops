@@ -1,7 +1,6 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 import path from "path";
-import { promises as fs } from "fs";
 import {
   WriteFileArgsSchema,
   WriteMultipleFilesArgsSchema,
@@ -15,6 +14,7 @@ import {
 import {
   validatePath,
   writeFileContent,
+  writeBinaryFileAtomic,
   readFileContent,
   applyFileEdits,
 } from "../utils/lib.js";
@@ -37,6 +37,11 @@ interface EditFileResult {
   error?: string;
   dryRun?: boolean;
 }
+
+/** Result of validating one write_multiple_files entry. */
+type ValidatedWrite =
+  | { success: true; path: string; validPath: string; content: string }
+  | { success: false; path: string; error: string };
 
 interface EditFileResults {
   results: EditFileResult[];
@@ -75,14 +80,14 @@ async function writeFileBasedOnExtension(
         title: fileTitle,
         author: "vulcan-file-ops",
       });
-      // SECURITY: validPath pre-validated by validatePath() - safe from path traversal (CWE-23)
-      await fs.writeFile(validPath, pdfBuffer);
+      // SECURITY: validPath pre-validated by validatePath(); atomic, symlink-safe write (VFO-17)
+      await writeBinaryFileAtomic(validPath, pdfBuffer);
     } else {
       // Fallback to simple text PDF for plain text
       const { createSimpleTextPDF } = await import("../utils/pdf-writer.js");
       const pdfBuffer = await createSimpleTextPDF(content);
-      // SECURITY: validPath pre-validated by validatePath() - safe from path traversal (CWE-23)
-      await fs.writeFile(validPath, pdfBuffer);
+      // SECURITY: validPath pre-validated by validatePath(); atomic, symlink-safe write (VFO-17)
+      await writeBinaryFileAtomic(validPath, pdfBuffer);
     }
   } else if (ext === ".docx") {
     if (isHTML) {
@@ -91,14 +96,14 @@ async function writeFileBasedOnExtension(
         title: fileTitle,
         author: "vulcan-file-ops",
       });
-      // SECURITY: validPath pre-validated by validatePath() - safe from path traversal (CWE-23)
-      await fs.writeFile(validPath, docxBuffer);
+      // SECURITY: validPath pre-validated by validatePath(); atomic, symlink-safe write (VFO-17)
+      await writeBinaryFileAtomic(validPath, docxBuffer);
     } else {
       // Fallback to simple text DOCX for plain text
       const { createSimpleDOCX } = await import("../utils/docx-writer.js");
       const docxBuffer = await createSimpleDOCX(content);
-      // SECURITY: validPath pre-validated by validatePath() - safe from path traversal (CWE-23)
-      await fs.writeFile(validPath, docxBuffer);
+      // SECURITY: validPath pre-validated by validatePath(); atomic, symlink-safe write (VFO-17)
+      await writeBinaryFileAtomic(validPath, docxBuffer);
     }
   } else {
     // Regular text file
@@ -490,37 +495,36 @@ export async function handleWriteTool(name: string, args: any) {
       }
 
       // Validate all paths before any writing, auto-creating parent directories
-      const validationPromises = parsed.data.files.map(async (file) => {
-        try {
-          const validPath = await validatePath(file.path, {
-            createParentIfMissing: true,
-          });
-          return {
-            path: file.path,
-            validPath,
-            content: file.content,
-            success: true,
-          };
-        } catch (error) {
-          return {
-            path: file.path,
-            content: file.content,
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          };
-        }
-      });
+      const validationPromises = parsed.data.files.map(
+        async (file): Promise<ValidatedWrite> => {
+          try {
+            const validPath = await validatePath(file.path, {
+              createParentIfMissing: true,
+            });
+            return {
+              success: true,
+              path: file.path,
+              validPath,
+              content: file.content,
+            };
+          } catch (error) {
+            return {
+              success: false,
+              path: file.path,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        },
+      );
 
       const validatedFiles = await Promise.all(validationPromises);
 
-      // Separate valid and invalid files
-      const validFiles = validatedFiles.filter((f) => f.success) as Array<{
-        path: string;
-        validPath: string;
-        content: string;
-        success: true;
-      }>;
-      const invalidFiles = validatedFiles.filter((f) => !f.success);
+      // Separate valid and invalid files. The type guard (no cast) ensures
+      // only entries carrying a validatePath() result can reach the writer.
+      const validFiles = validatedFiles.flatMap((f) => (f.success ? [f] : []));
+      const invalidFiles = validatedFiles.flatMap((f) =>
+        f.success ? [] : [f],
+      );
 
       // If any paths are invalid, fail the entire operation
       if (invalidFiles.length > 0) {
