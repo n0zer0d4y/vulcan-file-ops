@@ -1,5 +1,7 @@
 import fs from "fs/promises";
 
+import os from "os";
+
 import path from "path";
 
 import { minimatch } from "minimatch";
@@ -66,6 +68,90 @@ interface ListingResult {
   entries: FileEntry[];
   excludedByPatterns: number;
   excludedByIgnoreRules: number;
+}
+
+// ============================================================================
+// RUNTIME DIRECTORY REGISTRATION POLICY (register_directory)
+// ============================================================================
+//
+// Security (VFO-07): register_directory widens the sandbox, so by default it
+// requires a human to confirm each registration through the MCP client
+// (elicitation). The server entry point installs the consent handler; when
+// none is installed (or the client cannot prompt), registration is refused.
+
+export const RUNTIME_REGISTRATION_POLICIES = [
+  "confirm",
+  "allow",
+  "deny",
+] as const;
+
+export type RuntimeRegistrationPolicy =
+  (typeof RUNTIME_REGISTRATION_POLICIES)[number];
+
+export type DirectoryRegistrationConsent =
+  | "accepted"
+  | "declined"
+  | "unsupported";
+
+export type DirectoryRegistrationConsentHandler = (
+  realPath: string,
+) => Promise<DirectoryRegistrationConsent>;
+
+let runtimeRegistrationPolicy: RuntimeRegistrationPolicy = "confirm";
+let directoryRegistrationConsentHandler: DirectoryRegistrationConsentHandler | null =
+  null;
+
+export function isRuntimeRegistrationPolicy(
+  value: string,
+): value is RuntimeRegistrationPolicy {
+  return (RUNTIME_REGISTRATION_POLICIES as readonly string[]).includes(value);
+}
+
+export function setRuntimeRegistrationPolicy(
+  policy: RuntimeRegistrationPolicy,
+): void {
+  if (!isRuntimeRegistrationPolicy(policy)) {
+    throw new Error(
+      `Invalid runtime registration policy: ${policy}. Expected one of: ${RUNTIME_REGISTRATION_POLICIES.join(", ")}`,
+    );
+  }
+  runtimeRegistrationPolicy = policy;
+}
+
+export function getRuntimeRegistrationPolicy(): RuntimeRegistrationPolicy {
+  return runtimeRegistrationPolicy;
+}
+
+export function setDirectoryRegistrationConsentHandler(
+  handler: DirectoryRegistrationConsentHandler | null,
+): void {
+  directoryRegistrationConsentHandler = handler;
+}
+
+function samePath(a: string, b: string): boolean {
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  return process.platform === "win32"
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
+}
+
+async function describeSensitiveDirectory(
+  realPath: string,
+): Promise<string | null> {
+  if (path.parse(realPath).root === realPath) {
+    return "a filesystem root";
+  }
+  let home = os.homedir();
+  try {
+    home = await fs.realpath(home);
+  } catch {
+    // Fall back to the lexical home directory
+  }
+  if (home && samePath(realPath, home)) {
+    return "the user's home directory";
+  }
+  return null;
 }
 
 export function getFileSystemTools() {
@@ -140,7 +226,10 @@ export function getFileSystemTools() {
       description:
         "Register a directory for access. This allows the AI to dynamically gain access " +
         "to directories specified by the human user during conversation. The directory " +
-        "and all its subdirectories will become accessible for all filesystem operations." +
+        "and all its subdirectories will become accessible for all filesystem operations. " +
+        "By default the user must confirm each registration in their MCP client " +
+        "(registration is refused if the client cannot show a confirmation prompt); " +
+        "filesystem roots and the home directory cannot be registered at runtime." +
         generateApprovedDirsText(),
       inputSchema: sanitizeToolInputSchema(
         zodToJsonSchema(RegisterDirectoryArgsSchema) as ToolInput
@@ -753,34 +842,27 @@ export async function handleFileSystemTool(name: string, args: any) {
 
       const expandedPath = expandHome(parsed.data.path);
       const absolutePath = path.resolve(expandedPath);
-      const normalizedPath = normalizePath(absolutePath);
 
-      // Validate that the path exists and is a directory
+      // Resolve links so the directory that is shown to the user and stored
+      // in the allowed list is the one that will actually be accessed.
+      let realPath: string;
       try {
-        const stats = await fs.stat(absolutePath);
+        realPath = await fs.realpath(absolutePath);
+        const stats = await fs.stat(realPath);
         if (!stats.isDirectory()) {
           throw new Error(`Path ${absolutePath} is not a directory`);
         }
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT" || code === "ENOTDIR") {
           throw new Error(`Directory ${absolutePath} does not exist`);
         }
         throw error;
       }
+      const normalizedPath = normalizePath(realPath) || realPath;
 
-      // Add to allowed directories
-      const currentDirs = getAllowedDirectories();
-      if (!currentDirs.includes(normalizedPath)) {
-        setAllowedDirectories([...currentDirs, normalizedPath]);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Successfully registered directory: ${parsed.data.path} (${normalizedPath})`,
-            },
-          ],
-        };
-      } else {
+      // Already accessible: nothing to widen, so no prompt is needed
+      if (getAllowedDirectories().includes(normalizedPath)) {
         return {
           content: [
             {
@@ -790,6 +872,65 @@ export async function handleFileSystemTool(name: string, args: any) {
           ],
         };
       }
+      if (await isPathCanonicallyAllowed(realPath, process.cwd())) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Directory already accessible: ${parsed.data.path} (${normalizedPath}) is inside an allowed directory`,
+            },
+          ],
+        };
+      }
+
+      const policy = getRuntimeRegistrationPolicy();
+
+      if (policy === "deny") {
+        throw new Error(
+          `Runtime directory registration is disabled on this server (--runtime-registration deny). ` +
+            `To grant access to ${normalizedPath}, add it to --approved-folders in the MCP server configuration.`,
+        );
+      }
+
+      if (policy !== "allow") {
+        const sensitive = await describeSensitiveDirectory(realPath);
+        if (sensitive) {
+          throw new Error(
+            `Refusing to register ${normalizedPath}: it is ${sensitive}. ` +
+              `Register a more specific folder, add it to --approved-folders, ` +
+              `or start the server with --runtime-registration allow.`,
+          );
+        }
+
+        const consent = directoryRegistrationConsentHandler
+          ? await directoryRegistrationConsentHandler(normalizedPath)
+          : "unsupported";
+
+        if (consent === "unsupported") {
+          throw new Error(
+            `Cannot register ${normalizedPath}: registering directories at runtime requires user confirmation, ` +
+              `but this MCP client does not support confirmation prompts (MCP elicitation). ` +
+              `Add the folder via --approved-folders, or start the server with --runtime-registration allow.`,
+          );
+        }
+        if (consent !== "accepted") {
+          throw new Error(`User declined access to ${normalizedPath}`);
+        }
+      }
+
+      // Re-read: the list may have changed while waiting for the user
+      const currentDirs = getAllowedDirectories();
+      if (!currentDirs.includes(normalizedPath)) {
+        setAllowedDirectories([...currentDirs, normalizedPath]);
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully registered directory: ${parsed.data.path} (${normalizedPath})`,
+          },
+        ],
+      };
     }
 
     case "list_allowed_directories": {
