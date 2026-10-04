@@ -1,7 +1,13 @@
 import fs from "fs/promises";
+import { realpathSync } from "fs";
+import os from "os";
 import path from "path";
 import { handleFileSystemTool } from "../tools/filesystem-tools.js";
-import { setAllowedDirectories, getAllowedDirectories } from "../utils/lib.js";
+import {
+  setAllowedDirectories,
+  getAllowedDirectories,
+  validatePath,
+} from "../utils/lib.js";
 
 // Mock the validatePath function to allow our test paths
 jest.mock("../utils/lib.js", () => {
@@ -162,5 +168,274 @@ describe("file_operations tool", () => {
     await expect(
       handleFileSystemTool("file_operations", invalidArgs)
     ).rejects.toThrow();
+  });
+});
+
+describe("file_operations copy: symbolic links (VFO-09)", () => {
+  const actualLib = jest.requireActual("../utils/lib.js") as {
+    validatePath: (p: string) => Promise<string>;
+  };
+  const mockedValidatePath = validatePath as unknown as jest.Mock;
+  const linkType = process.platform === "win32" ? "junction" : "dir";
+
+  let previousAllowed: string[];
+  let allowedRoot: string;
+  let outsideDir: string;
+  let srcDir: string;
+
+  async function tryDirLink(target: string, link: string): Promise<boolean> {
+    try {
+      await fs.symlink(target, link, linkType);
+      return true;
+    } catch {
+      console.warn(`Skipping: could not create ${linkType} at ${link}`);
+      return false;
+    }
+  }
+
+  async function tryFileSymlink(target: string, link: string): Promise<boolean> {
+    try {
+      await fs.symlink(target, link, "file");
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // File symlinks need admin or Developer Mode on Windows
+      if (code === "EPERM" || code === "EACCES") {
+        console.warn("Skipping: file symlinks not permitted on this host");
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  async function exists(p: string): Promise<boolean> {
+    try {
+      await fs.lstat(p);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function copyArgs(source: string, destination: string, onConflict = "error") {
+    return {
+      operation: "copy",
+      files: [{ source, destination }],
+      onConflict,
+    };
+  }
+
+  beforeEach(async () => {
+    // Use the real, symlink-aware validatePath for these tests
+    mockedValidatePath.mockImplementation((p: unknown) =>
+      actualLib.validatePath(p as string)
+    );
+
+    previousAllowed = getAllowedDirectories();
+    allowedRoot = realpathSync(
+      await fs.mkdtemp(path.join(os.tmpdir(), "copy-symlink-allowed-"))
+    );
+    outsideDir = realpathSync(
+      await fs.mkdtemp(path.join(os.tmpdir(), "copy-symlink-outside-"))
+    );
+    await fs.writeFile(path.join(outsideDir, "secret.txt"), "TOP SECRET");
+    setAllowedDirectories([allowedRoot]);
+
+    srcDir = path.join(allowedRoot, "src");
+    await fs.mkdir(path.join(srcDir, "nested"), { recursive: true });
+    await fs.writeFile(path.join(srcDir, "a.txt"), "A");
+    await fs.writeFile(path.join(srcDir, "nested", "b.txt"), "B");
+  });
+
+  afterEach(async () => {
+    mockedValidatePath.mockImplementation(async (p: unknown) => p);
+    setAllowedDirectories(previousAllowed);
+    // Remove links before recursive deletion so nothing outside is touched
+    const removeLinks = async (dir: string): Promise<void> => {
+      let entries: import("fs").Dirent[] = [];
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const p = path.join(dir, entry.name);
+        const stats = await fs.lstat(p);
+        if (stats.isSymbolicLink()) {
+          await fs.unlink(p).catch(() => fs.rmdir(p).catch(() => {}));
+        } else if (stats.isDirectory()) {
+          await removeLinks(p);
+        }
+      }
+    };
+    await removeLinks(allowedRoot);
+    await fs.rm(allowedRoot, { recursive: true, force: true });
+    await fs.rm(outsideDir, { recursive: true, force: true });
+  });
+
+  test("copies a normal directory tree", async () => {
+    const dest = path.join(allowedRoot, "copy");
+
+    const result = await handleFileSystemTool(
+      "file_operations",
+      copyArgs(srcDir, dest)
+    );
+
+    expect(result.content[0].text).toContain("Successful: 1");
+    expect(result.content[0].text).toContain("Failed: 0");
+    expect(await fs.readFile(path.join(dest, "a.txt"), "utf-8")).toBe("A");
+    expect(
+      await fs.readFile(path.join(dest, "nested", "b.txt"), "utf-8")
+    ).toBe("B");
+  });
+
+  test("refuses a directory containing a directory link pointing outside", async () => {
+    if (!(await tryDirLink(outsideDir, path.join(srcDir, "nested", "escape")))) {
+      return;
+    }
+    const dest = path.join(allowedRoot, "copy");
+
+    const result = await handleFileSystemTool(
+      "file_operations",
+      copyArgs(srcDir, dest)
+    );
+    const text = result.content[0].text;
+
+    expect(text).toContain("Failed: 1");
+    expect(text).toContain("Refusing to copy symbolic link inside directory");
+    expect(text).toContain(path.join(srcDir, "nested", "escape"));
+    // The whole tree is validated first, so nothing was created
+    expect(await exists(dest)).toBe(false);
+  });
+
+  test("refuses a directory link even when it points inside the sandbox", async () => {
+    const innerTarget = path.join(allowedRoot, "inner-target");
+    await fs.mkdir(innerTarget);
+    if (!(await tryDirLink(innerTarget, path.join(srcDir, "inner-link")))) {
+      return;
+    }
+    const dest = path.join(allowedRoot, "copy");
+
+    const result = await handleFileSystemTool(
+      "file_operations",
+      copyArgs(srcDir, dest)
+    );
+
+    expect(result.content[0].text).toContain("Failed: 1");
+    expect(result.content[0].text).toContain(
+      "symbolic links are not copied for security reasons"
+    );
+    expect(await exists(dest)).toBe(false);
+  });
+
+  test("refuses a directory containing a file symlink (POSIX / privileged Windows)", async () => {
+    if (
+      !(await tryFileSymlink(
+        path.join(outsideDir, "secret.txt"),
+        path.join(srcDir, "nested", "s.txt")
+      ))
+    ) {
+      return;
+    }
+    const dest = path.join(allowedRoot, "copy");
+
+    const result = await handleFileSystemTool(
+      "file_operations",
+      copyArgs(srcDir, dest)
+    );
+
+    expect(result.content[0].text).toContain("Failed: 1");
+    expect(result.content[0].text).toContain(
+      "Refusing to copy symbolic link inside directory"
+    );
+    expect(await exists(dest)).toBe(false);
+    expect(await exists(path.join(dest, "nested", "s.txt"))).toBe(false);
+  });
+
+  test("still copies sibling sources in the same batch", async () => {
+    const badSrc = path.join(allowedRoot, "bad-src");
+    await fs.mkdir(badSrc);
+    if (!(await tryDirLink(outsideDir, path.join(badSrc, "escape")))) {
+      return;
+    }
+    const goodDest = path.join(allowedRoot, "good-copy");
+    const badDest = path.join(allowedRoot, "bad-copy");
+
+    const result = await handleFileSystemTool("file_operations", {
+      operation: "copy",
+      files: [
+        { source: srcDir, destination: goodDest },
+        { source: badSrc, destination: badDest },
+      ],
+      onConflict: "error",
+    });
+
+    expect(result.content[0].text).toContain("Successful: 1");
+    expect(result.content[0].text).toContain("Failed: 1");
+    expect(await exists(path.join(goodDest, "a.txt"))).toBe(true);
+    expect(await exists(badDest)).toBe(false);
+  });
+
+  test("rejects a top-level source that is a link pointing outside", async () => {
+    const topLink = path.join(allowedRoot, "top-link");
+    if (!(await tryDirLink(outsideDir, topLink))) {
+      return;
+    }
+
+    await expect(
+      handleFileSystemTool(
+        "file_operations",
+        copyArgs(topLink, path.join(allowedRoot, "copy"))
+      )
+    ).rejects.toThrow("Path validation failed");
+    expect(await exists(path.join(allowedRoot, "copy"))).toBe(false);
+  });
+
+  test("copies the real target of a top-level link that stays inside", async () => {
+    const topLink = path.join(allowedRoot, "top-link");
+    if (!(await tryDirLink(srcDir, topLink))) {
+      return;
+    }
+    const dest = path.join(allowedRoot, "copy");
+
+    const result = await handleFileSystemTool(
+      "file_operations",
+      copyArgs(topLink, dest)
+    );
+
+    expect(result.content[0].text).toContain("Successful: 1");
+    expect((await fs.lstat(dest)).isSymbolicLink()).toBe(false);
+    expect(await fs.readFile(path.join(dest, "a.txt"), "utf-8")).toBe("A");
+  });
+
+  test("does not write through a link that already exists at the destination", async () => {
+    const dest = path.join(allowedRoot, "copy");
+    await fs.mkdir(dest);
+    // dest/nested is a link to the outside directory
+    if (!(await tryDirLink(outsideDir, path.join(dest, "nested")))) {
+      return;
+    }
+
+    const result = await handleFileSystemTool(
+      "file_operations",
+      copyArgs(srcDir, dest, "overwrite")
+    );
+
+    expect(result.content[0].text).toContain("Failed: 1");
+    expect(result.content[0].text).toContain("Access denied");
+    expect(await exists(path.join(outsideDir, "b.txt"))).toBe(false);
+  });
+
+  test("refuses to copy a directory into itself", async () => {
+    const result = await handleFileSystemTool(
+      "file_operations",
+      copyArgs(srcDir, path.join(srcDir, "nested", "self-copy"))
+    );
+
+    expect(result.content[0].text).toContain("Failed: 1");
+    expect(result.content[0].text).toContain(
+      "Cannot copy a directory into itself"
+    );
+    expect(await exists(path.join(srcDir, "nested", "self-copy"))).toBe(false);
   });
 });

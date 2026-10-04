@@ -924,6 +924,11 @@ export async function handleFileSystemTool(name: string, args: any) {
               break;
 
             case "copy":
+              // validSource is the realpath returned by validatePath, so a
+              // top-level source that is itself a symlink/junction has already
+              // been resolved and its real target checked against the allowed
+              // directories. Links *inside* a copied directory are refused by
+              // copyDirectoryRecursive.
               const stats = await fs.stat(file.validSource!);
 
               if (stats.isDirectory()) {
@@ -1220,26 +1225,113 @@ export async function handleFileSystemTool(name: string, args: any) {
   }
 }
 
-// Helper function for recursive directory copying
+// Helpers for recursive directory copying
+//
+// Security (VFO-09): fs.copyFile follows symbolic links, so copying a link
+// found inside a directory would copy the link TARGET's contents (possibly
+// from outside the allowed directories) into the sandbox. The whole source
+// tree is therefore checked for links before anything is copied, and links
+// (file or directory symlinks, Windows junctions) are refused, never followed.
+
+interface DirectoryCopyEntry {
+  relativePath: string;
+  type: "directory" | "file";
+}
+
+function symlinkCopyError(entryPath: string): Error {
+  return new Error(
+    `Refusing to copy symbolic link inside directory: ${entryPath} ` +
+      `(symbolic links are not copied for security reasons)`,
+  );
+}
+
+async function collectDirectoryCopyPlan(
+  root: string,
+  relativeDir = "",
+  plan: DirectoryCopyEntry[] = [],
+): Promise<DirectoryCopyEntry[]> {
+  const entries = await fs.readdir(path.join(root, relativeDir), {
+    withFileTypes: true,
+  });
+
+  for (const entry of entries) {
+    const relativePath = path.join(relativeDir, entry.name);
+    const entryPath = path.join(root, relativePath);
+    // lstat never follows links; Node reports junctions as symbolic links too
+    const stats = await fs.lstat(entryPath);
+
+    if (entry.isSymbolicLink() || stats.isSymbolicLink()) {
+      throw symlinkCopyError(entryPath);
+    }
+    if (stats.isDirectory()) {
+      plan.push({ relativePath, type: "directory" });
+      await collectDirectoryCopyPlan(root, relativePath, plan);
+    } else if (stats.isFile()) {
+      plan.push({ relativePath, type: "file" });
+    } else {
+      throw new Error(
+        `Refusing to copy special file inside directory: ${entryPath} ` +
+          `(only regular files and directories are copied)`,
+      );
+    }
+  }
+
+  return plan;
+}
+
 async function copyDirectoryRecursive(
   source: string,
   destination: string,
 ): Promise<void> {
-  // Create destination directory
-  await fs.mkdir(destination, { recursive: true });
+  const relativeDest = path.relative(source, destination);
+  if (
+    relativeDest === "" ||
+    (!relativeDest.startsWith("..") && !path.isAbsolute(relativeDest))
+  ) {
+    throw new Error(
+      `Cannot copy a directory into itself: ${source} to ${destination}`,
+    );
+  }
 
-  // Read source directory
-  const entries = await fs.readdir(source, { withFileTypes: true });
+  // Validate the entire source tree before creating or copying anything
+  const plan = await collectDirectoryCopyPlan(source);
 
-  // Copy all entries
-  for (const entry of entries) {
-    const sourcePath = path.join(source, entry.name);
-    const destPath = path.join(destination, entry.name);
+  // Destination directories are created segment by segment with their
+  // realpath re-checked, so an existing link at the destination cannot
+  // redirect the copy outside the allowed directories.
+  await ensureDirectoryWithinAllowed(destination);
 
-    if (entry.isDirectory()) {
-      await copyDirectoryRecursive(sourcePath, destPath);
-    } else {
-      await fs.copyFile(sourcePath, destPath);
+  for (const entry of plan) {
+    const sourcePath = path.join(source, entry.relativePath);
+    const destPath = path.join(destination, entry.relativePath);
+
+    if (entry.type === "directory") {
+      await ensureDirectoryWithinAllowed(destPath);
+      continue;
     }
+
+    // Re-check the source right before copying in case it was swapped for a
+    // link after the tree was validated.
+    const sourceStats = await fs.lstat(sourcePath);
+    if (sourceStats.isSymbolicLink() || !sourceStats.isFile()) {
+      throw symlinkCopyError(sourcePath);
+    }
+
+    // Never write through an existing link at the destination
+    let destIsLink = false;
+    try {
+      destIsLink = (await fs.lstat(destPath)).isSymbolicLink();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+    if (destIsLink) {
+      throw new Error(
+        `Refusing to overwrite symbolic link at destination: ${destPath}`,
+      );
+    }
+
+    await fs.copyFile(sourcePath, destPath);
   }
 }
