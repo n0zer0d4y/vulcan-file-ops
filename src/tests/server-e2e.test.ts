@@ -8,6 +8,9 @@
  * Covered:
  * - VFO-07: register_directory consent via MCP elicitation and
  *   --runtime-registration
+ * - VFO-08: no implicit .env loading from the working directory; explicit
+ *   --commands-env-file only contributes APPROVED_COMMANDS and never touches
+ *   the server's (and therefore shell children's) environment
  */
 import { describe, it, expect, beforeAll, afterAll, jest } from "@jest/globals";
 import { spawn } from "child_process";
@@ -49,6 +52,28 @@ interface StartOptions {
   onElicit?: (request: ElicitRequest) => ElicitResult | Promise<ElicitResult>;
 }
 
+const serverPids = new WeakMap<Client, number>();
+
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Close the client and wait for the server process to exit (Windows keeps
+ * the child's cwd locked until then). */
+async function stopServer(client: Client): Promise<void> {
+  const pid = serverPids.get(client);
+  await client.close();
+  const deadline = Date.now() + 10_000;
+  while (pid !== undefined && isRunning(pid) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 async function startServer(options: StartOptions = {}): Promise<Client> {
   const transport = new StdioClientTransport({
     command: process.execPath,
@@ -68,6 +93,9 @@ async function startServer(options: StartOptions = {}): Promise<Client> {
     );
   }
   await client.connect(transport);
+  if (transport.pid !== null) {
+    serverPids.set(client, transport.pid);
+  }
   return client;
 }
 
@@ -153,7 +181,7 @@ describe("server e2e: register_directory consent (VFO-07)", () => {
       const listed = await callTool(client, "list_allowed_directories");
       expect(listed.text).toContain(candidateDir);
     } finally {
-      await client.close();
+      await stopServer(client);
     }
   });
 
@@ -179,7 +207,7 @@ describe("server e2e: register_directory consent (VFO-07)", () => {
       const listed = await callTool(client, "list_allowed_directories");
       expect(listed.text).not.toContain(candidateDir);
     } finally {
-      await client.close();
+      await stopServer(client);
     }
   });
 
@@ -196,7 +224,7 @@ describe("server e2e: register_directory consent (VFO-07)", () => {
       expect(result.text).toContain("--approved-folders");
       expect(result.text).toContain("--runtime-registration allow");
     } finally {
-      await client.close();
+      await stopServer(client);
     }
   });
 
@@ -217,7 +245,7 @@ describe("server e2e: register_directory consent (VFO-07)", () => {
       expect(result.text).toContain("--approved-folders");
       expect(prompted).toBe(false);
     } finally {
-      await client.close();
+      await stopServer(client);
     }
   });
 
@@ -232,7 +260,151 @@ describe("server e2e: register_directory consent (VFO-07)", () => {
       expect(result.isError).toBe(false);
       expect(result.text).toContain("Successfully registered directory");
     } finally {
-      await client.close();
+      await stopServer(client);
+    }
+  });
+});
+
+describe("server e2e: .env handling (VFO-08)", () => {
+  let workDir: string;
+
+  async function shellDescription(client: Client): Promise<string> {
+    const { tools } = await client.listTools();
+    return tools.find((t) => t.name === "execute_shell")?.description ?? "";
+  }
+
+  beforeAll(async () => {
+    workDir = realpathSync(
+      await fs.mkdtemp(path.join(os.tmpdir(), "e2e-envfile-"))
+    );
+    // A .env in the server's working directory (e.g. a cloned repository)
+    await fs.writeFile(
+      path.join(workDir, ".env"),
+      "APPROVED_COMMANDS=vfo-cwd-dotenv-canary\nVFO_CWD_ENV_CANARY=leaked-from-cwd\n"
+    );
+    await fs.writeFile(
+      path.join(workDir, "explicit.env"),
+      "APPROVED_COMMANDS=vfo-envfile-canary, node\nVFO_ENV_CANARY=leaked-from-env-file\n"
+    );
+  });
+
+  afterAll(async () => {
+    await fs.rm(workDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 200,
+    });
+  });
+
+  it("documents --commands-env-file in --help", async () => {
+    const { code, stderr } = await runCli(["--help"]);
+    expect(code).toBe(0);
+    expect(stderr).toContain("--commands-env-file <path>");
+  });
+
+  it("rejects --env-file (reserved by Node.js, which applies NODE_OPTIONS from it)", async () => {
+    const { code } = await runCli(
+      ["--env-file", path.join(workDir, "explicit.env")],
+      workDir
+    );
+    expect(code).not.toBe(0);
+  });
+
+  it("does not load .env from the working directory", async () => {
+    const client = await startServer({
+      cwd: workDir,
+      args: ["--approved-folders", workDir],
+    });
+    try {
+      const description = await shellDescription(client);
+      expect(description).not.toBe("");
+      expect(description).not.toContain("vfo-cwd-dotenv-canary");
+    } finally {
+      await stopServer(client);
+    }
+  });
+
+  it("reads only APPROVED_COMMANDS from --commands-env-file (relative to cwd) without polluting process.env", async () => {
+    const client = await startServer({
+      cwd: workDir,
+      args: ["--approved-folders", workDir, "--commands-env-file", "explicit.env"],
+    });
+    try {
+      const description = await shellDescription(client);
+      expect(description).toContain("vfo-envfile-canary");
+      expect(description).not.toContain("vfo-cwd-dotenv-canary");
+
+      // Shell children inherit the server's environment: neither file's other
+      // variables may appear there.
+      const result = await callTool(client, "execute_shell", {
+        command: "node -p process.env.VFO_ENV_CANARY",
+        workdir: workDir,
+        description: "Print canary environment variable",
+      });
+      expect(result.isError).toBe(false);
+      expect(result.text).toContain("undefined");
+      expect(result.text).not.toContain("leaked-from-env-file");
+
+      const cwdResult = await callTool(client, "execute_shell", {
+        command: "node -p process.env.VFO_CWD_ENV_CANARY",
+        workdir: workDir,
+        description: "Print canary environment variable",
+      });
+      expect(cwdResult.text).not.toContain("leaked-from-cwd");
+    } finally {
+      await stopServer(client);
+    }
+  });
+
+  it("accepts an absolute --commands-env-file path with = syntax", async () => {
+    const client = await startServer({
+      args: [
+        "--approved-folders",
+        workDir,
+        `--commands-env-file=${path.join(workDir, "explicit.env")}`,
+      ],
+    });
+    try {
+      expect(await shellDescription(client)).toContain("vfo-envfile-canary");
+    } finally {
+      await stopServer(client);
+    }
+  });
+
+  it("gives --approved-commands priority over --commands-env-file", async () => {
+    const client = await startServer({
+      cwd: workDir,
+      args: [
+        "--approved-folders",
+        workDir,
+        "--commands-env-file",
+        "explicit.env",
+        "--approved-commands",
+        "vfo-cli-canary",
+      ],
+    });
+    try {
+      const description = await shellDescription(client);
+      expect(description).toContain("vfo-cli-canary");
+      expect(description).not.toContain("vfo-envfile-canary");
+    } finally {
+      await stopServer(client);
+    }
+  });
+
+  it("keeps running in MCP mode when --commands-env-file is missing (no approved commands)", async () => {
+    const client = await startServer({
+      cwd: workDir,
+      args: ["--approved-folders", workDir, "--commands-env-file", "does-not-exist.env"],
+    });
+    try {
+      const description = await shellDescription(client);
+      expect(description).not.toBe("");
+      expect(description).not.toContain("vfo-envfile-canary");
+      expect(description).not.toContain("vfo-cwd-dotenv-canary");
+    } finally {
+      await stopServer(client);
     }
   });
 });
