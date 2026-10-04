@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Supply-chain quarantine: only propose versions that have been public for
+    # at least 14 days (most malicious npm releases are caught within that window).
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 5
+    groups:
+      dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14

@@ -127,7 +127,8 @@ export function getReadTools() {
         "to the AI model as if uploaded directly by the user, enabling the AI to see " +
         "and describe visual content, read text in images, analyze diagrams, etc. " +
         "Supports attaching a single image or multiple images at once. " +
-        "Supports PNG, JPEG, GIF, WebP, BMP, and SVG formats. " +
+        "Supports PNG, JPEG, GIF and WebP (the formats vision models accept). " +
+        "SVG files are returned as their XML markup text; BMP is not supported (convert to PNG). " +
         "Note: This requires the MCP client to support vision capabilities. " +
         "Only works within allowed directories.",
       inputSchema: {
@@ -242,14 +243,14 @@ export async function handleReadTool(name: string, args: any) {
         ? parsed.data.path
         : [parsed.data.path];
 
-      // Supported image formats only (no audio)
+      // Raster formats accepted by vision models. SVG is vector markup (XML),
+      // which vision APIs reject as an image, so it is returned as text.
       const mimeTypes: Record<string, string> = {
         ".png": "image/png",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
         ".gif": "image/gif",
         ".webp": "image/webp",
-        ".bmp": "image/bmp",
         ".svg": "image/svg+xml",
       };
 
@@ -260,10 +261,16 @@ export async function handleReadTool(name: string, args: any) {
           const extension = path.extname(validPath).toLowerCase();
           const mimeType = mimeTypes[extension];
 
+          if (extension === ".bmp") {
+            throw new Error(
+              `BMP images are not accepted by vision models: ${imagePath}. ` +
+                `Convert it to PNG or JPEG first.`
+            );
+          }
           if (!mimeType) {
             throw new Error(
               `Unsupported image format: ${extension}. ` +
-                `Supported formats: PNG, JPEG, GIF, WebP, BMP, SVG`
+                `Supported formats: PNG, JPEG, GIF, WebP (SVG is returned as markup text)`
             );
           }
 
@@ -292,11 +299,22 @@ export async function handleReadTool(name: string, args: any) {
       }
 
       const imageContents = await Promise.all(
-        images.map(async ({ validPath, mimeType }) => ({
-          type: "image" as const,
-          data: await readFileAsBase64Stream(validPath, MAX_IMAGE_ATTACH_BYTES),
-          mimeType: mimeType,
-        }))
+        images.map(async ({ imagePath, validPath, mimeType }) => {
+          if (mimeType === "image/svg+xml") {
+            const markup = await fs.readFile(validPath, "utf-8");
+            return {
+              type: "text" as const,
+              text:
+                `SVG image ${imagePath} (vector markup; vision models accept only PNG, JPEG, GIF and WebP, so the SVG source is provided as text):\n` +
+                markup,
+            };
+          }
+          return {
+            type: "image" as const,
+            data: await readFileAsBase64Stream(validPath, MAX_IMAGE_ATTACH_BYTES),
+            mimeType: mimeType,
+          };
+        })
       );
 
       // Return all images in MCP-compliant format

@@ -203,25 +203,27 @@ describe("Command Validation", () => {
     });
 
     test("blocks command injection via approved commands (CVE-2025-54795 pattern)", () => {
-      // This test verifies that command injection attempts through approved commands
-      // are detected by root command extraction
-      // Pattern: echo "\"; malicious_command; echo \""
-      const injectedCommand = 'echo "; malicious_command; echo"';
-      
-      // Command validation passes (no command substitution detected)
+      // The CVE pattern breaks out of a string with escaped quotes:
+      //   echo "\"; malicious_command; echo \""
+      // bash and PowerShell disagree on \" so such commands are rejected.
+      const injectedCommand = 'echo "\\"; malicious_command; echo \\""';
       const result = validateCommand(injectedCommand, false);
-      expect(result.allowed).toBe(true);
-      
-      // However, root extraction detects multiple commands, including unapproved ones
-      // This is what prevents the injection at the approval stage
-      const roots = extractRootCommands(injectedCommand);
-      expect(roots).toContain("malicious_command");
-      expect(roots).toContain("echo");
-      expect(roots.length).toBeGreaterThan(1); // Multiple commands detected
-      
-      // If only "echo" is approved, this injection would be blocked
-      const approvedCommands = new Set(["echo"]);
-      expect(isCommandApproved(injectedCommand, approvedCommands)).toBe(false);
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain("escaped quotes");
+
+      // Even if extraction is asked directly, it does not under-report commands
+      expect(extractRootCommands(injectedCommand)).toContain(
+        "malicious_command"
+      );
+      expect(isCommandApproved(injectedCommand, new Set(["echo"]))).toBe(false);
+    });
+
+    test("treats separators inside plain quotes as data, not commands", () => {
+      // In both bash and PowerShell this prints a string; nothing else runs.
+      const quoted = 'echo "; not_a_command; echo"';
+      expect(validateCommand(quoted, false).allowed).toBe(true);
+      expect(extractRootCommands(quoted)).toEqual(["echo"]);
+      expect(isCommandApproved(quoted, new Set(["echo"]))).toBe(true);
     });
   });
 

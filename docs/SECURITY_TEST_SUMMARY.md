@@ -1,5 +1,7 @@
 # Security Test Coverage Summary
 
+> **Update (October 2026, v1.3.0):** Some shell path tests listed here passed for the wrong reason (they omitted `workdir`, so the working-directory check rejected them before path validation ran). They now pass a valid `workdir` and assert the specific path-denial message, and `src/tests/shell-hardening.test.ts`, `src/tests/canonical-path.test.ts` and related suites add regression coverage for the 1.3.0 fixes.
+
 **Generated**: November 15, 2025  
 **Test Location**: `src/tests/`  
 **Reference**: Snyk Vulnerability Audit Report & Vulnerability Research Findings
