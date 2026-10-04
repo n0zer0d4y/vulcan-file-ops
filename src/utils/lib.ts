@@ -6,6 +6,12 @@ import { diffLines, createTwoFilesPatch } from "diff";
 import { minimatch } from "minimatch";
 import { normalizePath, expandHome } from "./path-utils.js";
 import { isPathWithinAllowedDirectories } from "./path-validation.js";
+import {
+  RegexEvaluationSession,
+  RegexEvaluationError,
+  DEFAULT_GREP_REGEX_FILE_TIMEOUT_MS,
+  DEFAULT_GREP_REGEX_TOTAL_TIMEOUT_MS,
+} from "./regex-worker.js";
 
 // Global configuration - set by the main module
 let allowedDirectories: string[] = [];
@@ -95,6 +101,16 @@ export interface GrepOptions {
   multiline?: boolean;
   fileType?: string;
   globPattern?: string;
+  /**
+   * Per-file regex evaluation budget in ms (default
+   * DEFAULT_GREP_REGEX_FILE_TIMEOUT_MS). Not exposed through the tool schema.
+   */
+  regexFileTimeoutMs?: number;
+  /**
+   * Cumulative regex evaluation budget for the whole call in ms (default
+   * DEFAULT_GREP_REGEX_TOTAL_TIMEOUT_MS). Not exposed through the tool schema.
+   */
+  regexTotalTimeoutMs?: number;
 }
 
 export interface GrepMatch {
@@ -1359,6 +1375,29 @@ export async function rangeFile(
   }
 }
 
+/**
+ * Maximum length of a grep_files regex pattern. Compiling is cheap, but long
+ * model-supplied patterns only widen the backtracking attack surface (VFO-14).
+ */
+export const MAX_GREP_PATTERN_LENGTH = 1_000;
+
+/**
+ * Maximum length of a glob pattern handed to minimatch (glob_files pattern,
+ * excludePatterns, grep_files glob). minimatch has had ReDoS advisories; a
+ * length cap is cheap defense in depth.
+ */
+export const MAX_GLOB_PATTERN_LENGTH = 1_000;
+
+export { DEFAULT_GREP_REGEX_FILE_TIMEOUT_MS, DEFAULT_GREP_REGEX_TOTAL_TIMEOUT_MS };
+
+function assertGlobPatternLength(value: string, what: string): void {
+  if (value.length > MAX_GLOB_PATTERN_LENGTH) {
+    throw new Error(
+      `${what} is too long (${value.length} characters); the maximum is ${MAX_GLOB_PATTERN_LENGTH}`,
+    );
+  }
+}
+
 export async function searchFilesWithValidation(
   rootPath: string,
   pattern: string,
@@ -1367,6 +1406,11 @@ export async function searchFilesWithValidation(
 ): Promise<string[]> {
   const { excludePatterns = [] } = options;
   const results: string[] = [];
+
+  assertGlobPatternLength(pattern, "Glob pattern");
+  for (const excludePattern of excludePatterns) {
+    assertGlobPatternLength(excludePattern, "Exclude pattern");
+  }
 
   // Check if pattern requires recursive search (contains ** or has path separators)
   const needsRecursion =
@@ -1423,15 +1467,27 @@ export async function grepFilesWithValidation(
     multiline = false,
     fileType,
     globPattern,
+    regexFileTimeoutMs,
+    regexTotalTimeoutMs,
   } = options;
 
-  // Create regex with appropriate flags (no 'g' flag to avoid stateful matching)
+  if (pattern.length > MAX_GREP_PATTERN_LENGTH) {
+    throw new Error(
+      `Regex pattern is too long (${pattern.length} characters); the maximum is ${MAX_GREP_PATTERN_LENGTH}`,
+    );
+  }
+  if (globPattern) {
+    assertGlobPatternLength(globPattern, "Glob pattern");
+  }
+
+  // Validate the pattern up front with the same flags the line matcher uses
+  // (no 'g' flag to avoid stateful matching). Compiling is cheap; all matching
+  // against file content happens in a time-bounded worker (VFO-14).
   const flags = caseInsensitive ? "i" : "";
   const dotAllFlag = multiline ? "s" : "";
-  let regex: RegExp;
 
   try {
-    regex = new RegExp(pattern, flags + dotAllFlag);
+    new RegExp(pattern, flags + dotAllFlag);
   } catch (error) {
     throw new Error(
       `Invalid regex pattern: ${pattern} - ${
@@ -1452,6 +1508,41 @@ export async function grepFilesWithValidation(
   // Determine if we need to search recursively
   const stats = await fs.stat(searchPath);
   const isDirectory = stats.isDirectory();
+
+  // One worker per call, reused across files and always terminated below.
+  const regexSession = new RegexEvaluationSession({
+    fileTimeoutMs: regexFileTimeoutMs,
+    totalTimeoutMs: regexTotalTimeoutMs,
+  });
+
+  function buildMatch(filePath: string, lines: string[], i: number): GrepMatch {
+    const match: GrepMatch = {
+      file: filePath,
+      line: i + 1,
+      content: lines[i],
+    };
+
+    // Add context lines if requested
+    if (contextBefore > 0) {
+      match.contextBefore = [];
+      for (let j = Math.max(0, i - contextBefore); j < i; j++) {
+        match.contextBefore.push(lines[j]);
+      }
+    }
+
+    if (contextAfter > 0) {
+      match.contextAfter = [];
+      for (
+        let j = i + 1;
+        j < Math.min(lines.length, i + 1 + contextAfter);
+        j++
+      ) {
+        match.contextAfter.push(lines[j]);
+      }
+    }
+
+    return match;
+  }
 
   async function searchFile(filePath: string): Promise<void> {
     // Validate path against allowed directories
@@ -1501,99 +1592,78 @@ export async function grepFilesWithValidation(
       let fileMatchCount = 0;
       let fileHasMatch = false;
 
+      // Matching lines still to be emitted before head_limit is reached in
+      // content mode; lets the worker stop scanning early. Line output is
+      // replayed below exactly as the former in-thread loop produced it.
+      const remainingHead =
+        outputMode === "content" && headLimit
+          ? Math.max(0, headLimit - result.matches!.length)
+          : undefined;
+
       if (multiline) {
-        // For multiline mode, search the entire content
-        const matches = content.match(new RegExp(pattern, flags + "g"));
-        if (matches) {
+        // For multiline mode, search the entire content (global regex without
+        // dotAll), then find which lines match the dotAll regex.
+        const evaluation = await regexSession.evaluate(
+          {
+            content,
+            pattern,
+            flags,
+            multiline: true,
+            needLines: outputMode === "content",
+            maxLineMatches: remainingHead,
+          },
+          filePath,
+        );
+
+        if (evaluation.hasGlobalMatch) {
           fileHasMatch = true;
-          fileMatchCount = matches.length;
-          result.totalMatches += matches.length;
+          fileMatchCount = evaluation.globalMatchCount;
+          result.totalMatches += evaluation.globalMatchCount;
 
           if (outputMode === "content") {
-            // For multiline, we'll split by lines and find which lines have matches
             const lines = normalizeLineEndings(content).split("\n");
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i];
-              if (regex.test(line)) {
-                if (headLimit && result.matches!.length >= headLimit) {
-                  break;
-                }
-
-                const match: GrepMatch = {
-                  file: filePath,
-                  line: i + 1,
-                  content: line,
-                };
-
-                // Add context lines if requested
-                if (contextBefore > 0) {
-                  match.contextBefore = [];
-                  for (let j = Math.max(0, i - contextBefore); j < i; j++) {
-                    match.contextBefore.push(lines[j]);
-                  }
-                }
-
-                if (contextAfter > 0) {
-                  match.contextAfter = [];
-                  for (
-                    let j = i + 1;
-                    j < Math.min(lines.length, i + 1 + contextAfter);
-                    j++
-                  ) {
-                    match.contextAfter.push(lines[j]);
-                  }
-                }
-
-                result.matches!.push(match);
+            for (const i of evaluation.lineIndices) {
+              if (headLimit && result.matches!.length >= headLimit) {
+                break;
               }
+              result.matches!.push(buildMatch(filePath, lines, i));
             }
           }
         }
       } else {
-        // For single-line mode, search line by line
-        const lines = normalizeLineEndings(content).split("\n");
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
+        // For single-line mode, search line by line. In content mode the
+        // former loop counted the match that hit head_limit before breaking,
+        // so one extra matching line is requested.
+        const evaluation = await regexSession.evaluate(
+          {
+            content,
+            pattern,
+            flags,
+            multiline: false,
+            needLines: true,
+            maxLineMatches:
+              remainingHead === undefined ? undefined : remainingHead + 1,
+          },
+          filePath,
+        );
 
-          if (regex.test(line)) {
-            fileHasMatch = true;
-            fileMatchCount++;
-            result.totalMatches++;
+        const lines =
+          outputMode === "content"
+            ? normalizeLineEndings(content).split("\n")
+            : [];
+        for (const i of evaluation.lineIndices) {
+          fileHasMatch = true;
+          fileMatchCount++;
+          result.totalMatches++;
 
-            // Handle different output modes
-            if (outputMode === "content") {
-              // Check head limit for content mode
-              if (headLimit && result.matches!.length >= headLimit) {
-                break; // Stop processing this file
-              }
-
-              const match: GrepMatch = {
-                file: filePath,
-                line: i + 1,
-                content: line,
-              };
-
-              // Add context lines if requested
-              if (contextBefore > 0) {
-                match.contextBefore = [];
-                for (let j = Math.max(0, i - contextBefore); j < i; j++) {
-                  match.contextBefore.push(lines[j]);
-                }
-              }
-
-              if (contextAfter > 0) {
-                match.contextAfter = [];
-                for (
-                  let j = i + 1;
-                  j < Math.min(lines.length, i + 1 + contextAfter);
-                  j++
-                ) {
-                  match.contextAfter.push(lines[j]);
-                }
-              }
-
-              result.matches!.push(match);
+          // Handle different output modes
+          if (outputMode === "content") {
+            // Check head limit for content mode
+            if (headLimit && result.matches!.length >= headLimit) {
+              break; // Stop processing this file
             }
+
+            result.matches!.push(buildMatch(filePath, lines, i));
           }
         }
       }
@@ -1610,6 +1680,10 @@ export async function grepFilesWithValidation(
         result.counts!.set(filePath, fileMatchCount);
       }
     } catch (error) {
+      // Regex timeouts / worker failures abort the whole search.
+      if (error instanceof RegexEvaluationError) {
+        throw error;
+      }
       // Skip binary files or files we can't read
       return;
     }
@@ -1655,17 +1729,25 @@ export async function grepFilesWithValidation(
           }
         }
       }
-    } catch {
+    } catch (error) {
+      // Regex timeouts / worker failures abort the whole search.
+      if (error instanceof RegexEvaluationError) {
+        throw error;
+      }
       // Skip directories we can't read
       return;
     }
   }
 
   // Execute search
-  if (isDirectory) {
-    await searchDirectory(searchPath);
-  } else {
-    await searchFile(searchPath);
+  try {
+    if (isDirectory) {
+      await searchDirectory(searchPath);
+    } else {
+      await searchFile(searchPath);
+    }
+  } finally {
+    await regexSession.dispose();
   }
 
   return result;
