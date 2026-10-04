@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import * as fs from "fs/promises";
+import { realpathSync } from "fs";
 import * as path from "path";
 import * as os from "os";
 import { handleFileSystemTool } from "../tools/filesystem-tools.js";
@@ -9,7 +10,11 @@ describe("make_directory tool", () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = await fs.mkdtemp(path.join(os.tmpdir(), "make-dir-test-"));
+    // realpath: os.tmpdir() may itself be a symlink (e.g. /var -> /private/var
+    // on macOS). The server realpaths --approved-folders the same way.
+    testDir = realpathSync(
+      await fs.mkdtemp(path.join(os.tmpdir(), "make-dir-test-"))
+    );
     setAllowedDirectories([testDir]);
   });
 
@@ -367,6 +372,139 @@ describe("make_directory tool", () => {
       // Should treat as single path since JSON.parse fails
       expect(result.content[0].text).toContain("Successfully created directory");
       await expect(fs.access(malformedPath)).resolves.toBeUndefined();
+    });
+  });
+  describe("Symlink/junction sandbox escape (Issue #3, VFO-05)", () => {
+    let outsideDir: string;
+    let linkPath: string;
+    let linkCreated: boolean;
+
+    beforeEach(async () => {
+      outsideDir = realpathSync(
+        await fs.mkdtemp(path.join(os.tmpdir(), "make-dir-outside-"))
+      );
+      linkPath = path.join(testDir, "link");
+      try {
+        // Junctions need no admin rights on Windows; plain dir symlinks on POSIX
+        await fs.symlink(
+          outsideDir,
+          linkPath,
+          process.platform === "win32" ? "junction" : "dir"
+        );
+        linkCreated = true;
+      } catch {
+        linkCreated = false;
+      }
+    });
+
+    afterEach(async () => {
+      // Remove the link itself first so rm never follows it
+      await fs.rm(linkPath, { force: true }).catch(() => {});
+      await fs.unlink(linkPath).catch(() => {});
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    });
+
+    it("rejects a path that traverses a link pointing outside the allowed directory", async () => {
+      if (!linkCreated) {
+        console.warn("Skipping: could not create directory link");
+        return;
+      }
+      const target = path.join(linkPath, "created-by-mkdir");
+
+      await expect(
+        handleFileSystemTool("make_directory", { paths: target })
+      ).rejects.toThrow("Access denied");
+
+      await expect(
+        fs.access(path.join(outsideDir, "created-by-mkdir"))
+      ).rejects.toThrow();
+    });
+
+    it("rejects nested paths below the link and creates nothing outside", async () => {
+      if (!linkCreated) {
+        console.warn("Skipping: could not create directory link");
+        return;
+      }
+      const target = path.join(linkPath, "a", "b", "c");
+
+      await expect(
+        handleFileSystemTool("make_directory", { paths: [target] })
+      ).rejects.toThrow("Access denied");
+
+      expect(await fs.readdir(outsideDir)).toEqual([]);
+    });
+
+    it("rejects the whole batch when one path escapes via a link (nothing created)", async () => {
+      if (!linkCreated) {
+        console.warn("Skipping: could not create directory link");
+        return;
+      }
+      const safe1 = path.join(testDir, "safe-1");
+      const safe2 = path.join(testDir, "safe-2", "nested");
+      const escaping = path.join(linkPath, "escaped");
+
+      await expect(
+        handleFileSystemTool("make_directory", {
+          paths: [safe1, escaping, safe2],
+        })
+      ).rejects.toThrow(`Access denied: Path ${escaping}`);
+
+      await expect(fs.access(safe1)).rejects.toThrow();
+      await expect(fs.access(path.join(testDir, "safe-2"))).rejects.toThrow();
+      expect(await fs.readdir(outsideDir)).toEqual([]);
+    });
+
+    it("rejects a relative path that escapes via a link", async () => {
+      if (!linkCreated) {
+        console.warn("Skipping: could not create directory link");
+        return;
+      }
+      const originalCwd = process.cwd();
+      process.chdir(testDir);
+      try {
+        await expect(
+          handleFileSystemTool("make_directory", {
+            paths: path.join("link", "relative-escape"),
+          })
+        ).rejects.toThrow("Access denied");
+      } finally {
+        process.chdir(originalCwd);
+      }
+      expect(await fs.readdir(outsideDir)).toEqual([]);
+    });
+
+    it("still allows creating directories through a link that stays inside", async () => {
+      const innerTarget = path.join(testDir, "real-inner");
+      await fs.mkdir(innerTarget);
+      const innerLink = path.join(testDir, "inner-link");
+      try {
+        await fs.symlink(
+          innerTarget,
+          innerLink,
+          process.platform === "win32" ? "junction" : "dir"
+        );
+      } catch {
+        console.warn("Skipping: could not create directory link");
+        return;
+      }
+
+      const result = await handleFileSystemTool("make_directory", {
+        paths: path.join(innerLink, "child"),
+      });
+
+      expect(result.content[0].text).toContain("Successfully created directory");
+      await expect(
+        fs.access(path.join(innerTarget, "child"))
+      ).resolves.toBeUndefined();
+    });
+
+    it("rejects a path whose existing component is a file", async () => {
+      const filePath = path.join(testDir, "plain-file");
+      await fs.writeFile(filePath, "x");
+
+      await expect(
+        handleFileSystemTool("make_directory", { paths: filePath })
+      ).rejects.toThrow();
     });
   });
 });
