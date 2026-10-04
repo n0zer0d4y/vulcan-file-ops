@@ -169,7 +169,7 @@ describe("attach_image tool", () => {
       expect((result.content[0] as any).mimeType).toBe("image/webp");
     });
 
-    test("supports BMP format", async () => {
+    test("rejects BMP with a conversion hint (vision models do not accept BMP)", async () => {
       const bmpPath = path.join(FIXTURES_DIR, "test.bmp");
       // Minimal BMP file header + 1x1 pixel
       const bmpData = Buffer.from(
@@ -178,14 +178,12 @@ describe("attach_image tool", () => {
       );
       await fs.writeFile(bmpPath, bmpData);
 
-      const result = await handleReadTool("attach_image", {
-        path: bmpPath,
-      });
-
-      expect((result.content[0] as any).mimeType).toBe("image/bmp");
+      await expect(
+        handleReadTool("attach_image", { path: bmpPath })
+      ).rejects.toThrow(/BMP images are not accepted.*Convert it to PNG/);
     });
 
-    test("supports SVG format", async () => {
+    test("returns SVG as markup text instead of an image", async () => {
       const svgPath = path.join(FIXTURES_DIR, "test.svg");
       const svgData =
         '<svg width="1" height="1"><rect width="1" height="1" fill="red"/></svg>';
@@ -195,7 +193,10 @@ describe("attach_image tool", () => {
         path: svgPath,
       });
 
-      expect((result.content[0] as any).mimeType).toBe("image/svg+xml");
+      const content = result.content[0] as any;
+      expect(content.type).toBe("text");
+      expect(content.text).toContain("SVG image");
+      expect(content.text).toContain(svgData);
     });
   });
 
@@ -210,7 +211,7 @@ describe("attach_image tool", () => {
 
       await expect(
         handleReadTool("attach_image", { path: mp3Path })
-      ).rejects.toThrow("Supported formats: PNG, JPEG, GIF, WebP, BMP, SVG");
+      ).rejects.toThrow("Supported formats: PNG, JPEG, GIF, WebP");
     });
 
     test("rejects unsupported audio formats (WAV)", async () => {
@@ -418,7 +419,6 @@ describe("attach_image tool", () => {
         { ext: "jpg", mime: "image/jpeg" },
         { ext: "gif", mime: "image/gif" },
         { ext: "webp", mime: "image/webp" },
-        { ext: "bmp", mime: "image/bmp" },
       ];
 
       for (const format of formats) {

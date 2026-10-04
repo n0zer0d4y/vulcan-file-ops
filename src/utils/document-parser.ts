@@ -1,13 +1,18 @@
 import path from "path";
 import { promises as fs } from "fs";
 import type { DocumentParseResult } from "../types/index.js";
-import { MAX_DOCUMENT_FILE_BYTES } from "./limits.js";
+import {
+  MAX_DOCUMENT_FILE_BYTES,
+  ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES,
+  ZIP_MAX_ENTRIES,
+} from "./limits.js";
 import { assertSafeZipFile, UnsafeZipError } from "./zip-guard.js";
 
 // Lazy-loaded parsers (imported only when needed)
 let pdfParse: any = null;
 let mammoth: any = null;
-let officeParser: any = null;
+let officeParser: (typeof import("officeparser"))["parseOffice"] | null =
+  null;
 
 const DOCUMENT_EXTENSIONS = [
   ".pdf",
@@ -184,7 +189,7 @@ async function parseOfficeDocument(
   // Lazy load officeparser
   if (!officeParser) {
     const module = await import("officeparser");
-    officeParser = module.parseOfficeAsync;
+    officeParser = module.parseOffice;
   }
 
   const config = {
@@ -192,9 +197,21 @@ async function parseOfficeDocument(
     newlineDelimiter: "\n",
     ignoreNotes: false,
     putNotesAtLast: false,
+    // Text extraction only: never run OCR (which would load tesseract.js and
+    // download language data), extract embedded files, or keep raw XML.
+    ocr: false,
+    extractAttachments: false,
+    includeRawContent: false,
+    // Same limits as the zip-guard pre-check; officeparser additionally caps
+    // ODF repeated table cells, which the ZIP headers cannot reveal.
+    decompressionLimits: {
+      maxUncompressedBytes: ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES,
+      maxZipEntries: ZIP_MAX_ENTRIES,
+    },
   };
 
-  const text = await officeParser(filePath, config);
+  const ast = await officeParser(filePath, config);
+  const text = ast.toText();
 
   return {
     text,

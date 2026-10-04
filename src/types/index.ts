@@ -479,7 +479,12 @@ export const GrepArgsSchema = z.object({
   pattern: z.string().describe("Regex pattern to search for"),
   path: z.string().optional().describe("Directory/file to search (optional)"),
   type: z.string().optional().describe("File type filter: js, py, ts, etc"),
-  glob: z.string().optional().describe("Glob filter: *.js, **/*.test.ts"),
+  glob: z
+    .string()
+    .optional()
+    .describe(
+      "Glob filter. Without a slash it matches file names at any depth (*.md, *.test.ts); with a slash it matches the path relative to the search root (src/**/*.ts)"
+    ),
   "-i": z.boolean().optional().default(false).describe("Case insensitive"),
   "-A": z.number().optional().describe("Lines after match"),
   "-B": z.number().optional().describe("Lines before match"),
@@ -582,8 +587,8 @@ export const ShellCommandArgsSchema = z.object({
     .optional()
     .default(false)
     .describe(
-      "Indicates if this command requires explicit user approval. " +
-        "Set to true for potentially dangerous operations (installing packages, deleting files, etc.)."
+      "Deprecated and ignored. Kept for backward compatibility. " +
+        "Commands matching dangerous patterns can only be allowed by the server operator (--allow-dangerous-commands)."
     ),
 });
 

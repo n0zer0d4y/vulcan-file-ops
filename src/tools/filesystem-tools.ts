@@ -802,6 +802,43 @@ export async function handleFileSystemTool(name: string, args: any) {
       }
       const validSourcePath = await validatePath(parsed.data.source);
       const validDestPath = await validatePath(parsed.data.destination);
+      // fs.rename silently replaces an existing destination; move_file is
+      // documented to never overwrite.
+      try {
+        const destStats = await fs.lstat(validDestPath, { bigint: true });
+        const sourceStats = await fs.lstat(validSourcePath, { bigint: true });
+        const sameFile =
+          destStats.ino === sourceStats.ino && destStats.dev === sourceStats.dev;
+        // A case-only rename on a case-insensitive file system "finds" the
+        // source itself at the destination; that is not an overwrite.
+        // validatePath returns the existing (old-case) real path, so rename to
+        // the requested name inside the same, already-validated directory.
+        if (sameFile) {
+          await fs.rename(
+            validSourcePath,
+            path.join(
+              path.dirname(validDestPath),
+              path.basename(parsed.data.destination)
+            )
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Successfully moved ${parsed.data.source} to ${parsed.data.destination}`,
+              },
+            ],
+          };
+        }
+        throw new Error(
+          `Destination already exists: ${parsed.data.destination}. ` +
+            `move_file never overwrites; use file_operations with onConflict: "overwrite" to replace it.`
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error;
+        }
+      }
       await fs.rename(validSourcePath, validDestPath);
       return {
         content: [

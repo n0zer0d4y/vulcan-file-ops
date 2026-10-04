@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.3.0] - 2026-10-04
+
+Security hardening release. Upgrading is strongly recommended. See **Breaking Changes** before upgrading.
+
+### Security
+
+- **execute_shell: commands could bypass the approved-command list.** Newline-separated commands were not seen by the allowlist check. Commands are now parsed with a conservative, quote-aware parser that accepts only a grammar bash and PowerShell interpret the same way; newlines and control characters, backticks, escaped quotes (`\"`, `\'`), a lone `&`, `( )`/`{ }` grouping and script blocks, heredocs, Unicode quotes and PowerShell's `--%` are rejected. Separators inside quotes are now correctly treated as data.
+- **execute_shell: path validation gaps.** Slash-prefixed absolute paths (`/etc/passwd`, `/Windows/...`) were treated as command switches and never validated; redirection targets written without a space (`>C:\outside\file`) were not validated; paths through symlinks/junctions were checked only lexically (GitHub issue #3). Every operand, option value (`--out=...`, `-C:\x`), redirection target and `cd` target is now validated lexically, after `realpath`, and with physical resolution (symlinks followed before `..`). Relative operands are checked against every directory a `cd` could leave the command in. Arguments with unresolvable variables and PowerShell provider paths (`env:`, `HKLM:`, ...) are refused.
+- **execute_shell: dangerous-command check could be self-approved.** The `requiresApproval` argument let the caller (the AI) bypass the dangerous-pattern check. It is now ignored; the server operator can allow specific commands with `--allow-dangerous-commands`. The over-broad `format` pattern no longer matches `Get-Date -Format`.
+- **make_directory could create directories outside approved folders** through a symlink or junction (GitHub issue #3). Paths are now validated canonically and created segment by segment with a `realpath` check after each segment.
+- **register_directory let the AI widen its own access without user involvement.** Registration now requires user confirmation through the MCP client by default (see `--runtime-registration`). The real path is registered; filesystem roots and the home directory require `allow`.
+- **`.env` in the server's working directory controlled the shell allowlist** and was injected into the environment of executed commands. The working-directory `.env` is no longer read (see `--commands-env-file`).
+- **PDF generation could crash the server.** Any `<img>` that was not an inline `data:` image caused an unhandled promise rejection that terminated the process; corrupt PNG data could also crash it. Images are now sanitized (only `data:image/...` images up to 10 MB are embedded; others are replaced by their alt text), PDF rendering errors are returned as tool errors with a 30 s timeout, and unhandled rejections are logged to stderr instead of terminating the server.
+- **DOCX generation fetched remote image URLs** (server-side HTTP request with the response embedded in the document). Remote images are no longer fetched.
+- **grep_files regular expressions could freeze the server** (catastrophic backtracking). Matching now runs in a worker thread with a 5 s per-file and 30 s per-search budget; regex and glob patterns are limited to 1,000 characters.
+- **Unbounded reads and decompression.** Full-mode text reads are capped at 10 MB (use `head`/`tail`/`range` for larger files), `attach_image` at 10 MB per image and 20 MB per call, and Office/ODF documents are checked for zip bombs (size, entry count, compression ratio, ZIP64) before parsing.
+- **Directory copies dereferenced symlinks**, copying files from outside approved folders into them. Copying a directory that contains symlinks or junctions is now refused.
+- **PDF/DOCX output is written atomically** and never through a symlink, like text files.
+- **Dependencies refreshed** with a 14-day release quarantine (`npm --before`), including `@modelcontextprotocol/sdk` 1.20.0 → 1.30.0 (fixes GHSA-345p-7cg4-v4c7, GHSA-w48q-cv73-mx4w, GHSA-8r9q-7v3j-jr4g), `axios` (via `@turbodocx/html-to-docx`), `@xmldom/xmldom`, `minimatch`, `mammoth` and `officeparser` 5.2 → 7.8 (fixes a `file-type` infinite loop on crafted files). Snyk Open Source runtime findings went from 89 to 0 open; one `pdfjs-dist` advisory is ignored with justification because it is unreachable (PDFs are never parsed with `officeparser`, and the issue requires browser rendering). All packages pass `npm audit signatures`.
+- **Office/ODF spreadsheet expansion is bounded.** `officeparser` 7.x caps ODF "repeated cells" at 1,000,000 cells, so a tiny file that claims billions of cells can no longer expand without limit; its ZIP decompression limits are aligned with the zip-bomb pre-check (200 MB, 10,000 entries).
+
+### Breaking Changes
+
+- `register_directory` asks the user to confirm each directory by default. Clients without MCP elicitation support get a refusal; use `--approved-folders`, or start the server with `--runtime-registration allow` to restore the previous behavior.
+- The server no longer reads `.env` from its working directory. Pass `--approved-commands`, or `--commands-env-file <path>` (only `APPROVED_COMMANDS` is read). `APPROVED_COMMANDS` set as a process environment variable is no longer used. `--env-file` is rejected because Node.js reserves it.
+- `execute_shell` rejects commands outside the supported grammar (see Security above), and `requiresApproval` no longer bypasses dangerous-pattern blocking.
+- Node.js 20.19+ (or 22.12+) is required (already required by `jsdom` 27; now declared in `engines`).
+- Copying directories that contain symlinks or junctions is refused.
+- Full-mode reads of text files over 10 MB are refused.
+- `officeparser` 7.x (used for PPTX, XLSX and OpenDocument files) adds about 46 MB to the install, mostly the `tesseract.js` OCR engine it depends on. OCR is disabled and the engine is never loaded, but it is downloaded with the package.
+- `move_file` refuses to overwrite an existing destination (previously it replaced it silently). Use `file_operations` with `onConflict: "overwrite"` to replace files.
+- `attach_image` returns SVG files as markup text and rejects BMP files; only PNG, JPEG, GIF and WebP are returned as images.
+- `grep_files` `glob` without a slash now matches at any depth (`*.md` also matches `docs/guide.md`).
+
+### Added
+
+- `--runtime-registration <confirm|allow|deny>`, `--allow-dangerous-commands <cmds>`, `--commands-env-file <path>`.
+- `SECURITY.md` with private vulnerability reporting instructions.
+- GitHub Actions CI: runs the test suite and the build on Windows with Node 22.
+- Dependabot version updates for npm and GitHub Actions with a 14-day cooldown.
+- `engines` field in `package.json` (`^20.19.0 || >=22.12.0`).
+- Regression test suites for the fixes above.
+
+### Changed
+
+- Blocked `execute_shell` commands now report errors starting with `Access denied:` (validation, approval, dangerous-pattern and path checks).
+- The `.snyk` policy, which was invalid and suppressed nothing, is replaced by a minimal policy with one justified, time-boxed ignore.
+- Test tooling is pinned to `jest` / `@jest/globals` 30.2.0 and `ts-jest` 29.4.6; newer versions hang on several suites in this project.
+- Documentation corrected: Node.js requirement (was "14 or higher"), README security claims that the 1.3.0 audit disproved, and dated notes on the earlier audit reports in `docs/`.
+
+### Fixed
+
+- DOCX generation no longer mangles quoted HTML attributes (inline images and `style` attributes work again).
+- Shell path-validation tests that passed for the wrong reason (missing `workdir`) now assert the actual path denial.
+- `move_file` no longer silently overwrites an existing destination, matching its description; case-only renames (e.g. `readme.md` → `README.md`) now take effect.
+- `read_file` / `read_multiple_files` `tail` mode no longer counts the newline at the end of a file as an extra empty line.
+- `grep_files` `glob` without a slash (e.g. `*.md`) now matches files at any depth, like ripgrep; patterns with a slash still match the path from the search root.
+- `write_multiple_files` reports the size of the written file; for PDF/DOCX this was previously the length of the HTML input.
+- `attach_image` no longer sends SVG or BMP as images (vision models reject them): SVG is returned as markup text and BMP returns an error asking for PNG/JPEG.
+- A destination that resolves outside the allowed directories is reported as "Access denied" instead of "Parent directory does not exist".
+- The `execute_shell` description recommends `;` on Windows, where Windows PowerShell 5.1 does not support `&&` or `||`.
+
 ## [1.2.14] - 2026-05-16
 
 ### Fixed

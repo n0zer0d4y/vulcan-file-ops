@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Windows, Node 22)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Install scripts disabled: no third-party code runs at install time.
+      - run: npm ci --ignore-scripts
+
+      - run: npm test
+
+      # The build runs the TypeScript compiler, which catches type errors
+      # that the test runner only reports as warnings.
+      - run: npm run build

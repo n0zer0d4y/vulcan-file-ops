@@ -1,13 +1,24 @@
 import os from "os";
+import {
+  parseShellCommand,
+  getRootCommands,
+  ShellSyntaxError,
+  type ParsedShellCommand,
+} from "./shell-parser.js";
 
 /**
- * Dangerous command patterns that should trigger approval
+ * Dangerous command patterns. Matching commands are blocked unless the
+ * operator allowed the root command with --allow-dangerous-commands.
  */
 const DANGEROUS_PATTERNS = [
   // Destructive operations
   /\brm\b.*-rf?\b/i,
   /\bdel\b.*\/s\b/i,
-  /\bformat\b/i,
+  /\b(rd|rmdir)\b.*\/s\b/i,
+  /\bremove-item\b.*-recurse\b/i,
+  /\bformat(\.com)?\s+[a-z]:/i,
+  /\bformat-volume\b/i,
+  /\bclear-disk\b/i,
   /\bmkfs\b/i,
 
   // System modifications
@@ -40,29 +51,36 @@ const COMMAND_SUBSTITUTION_PATTERNS = [
 ];
 
 /**
- * Extract root command from shell command string
+ * Extract the root command of every segment of a shell command.
  * Examples:
- *   "ls -la" -> "ls"
- *   "npm install && npm start" -> ["npm", "npm"]
- *   "sudo apt install" -> ["sudo", "apt"]
+ *   "ls -la" -> ["ls"]
+ *   "npm install && npm start" -> ["npm"]
+ *   'echo "a; b"' -> ["echo"]   (quoted text is an argument, not a command)
+ *
+ * Uses the conservative shell parser. If the command is outside the accepted
+ * grammar (validateCommand rejects those), falls back to splitting on every
+ * separator, including newlines, so the result never under-reports commands.
  */
 export function extractRootCommands(command: string): string[] {
-  const roots: string[] = [];
+  try {
+    return getRootCommands(parseShellCommand(command));
+  } catch (error) {
+    if (!(error instanceof ShellSyntaxError)) {
+      throw error;
+    }
+  }
 
-  // Split by common shell operators
+  const roots: string[] = [];
   const segments = command
-    .split(/[;&|]/)
+    .split(/[;&|\r\n\u0085\u2028\u2029]/)
     .map((s) => s.trim())
     .filter(Boolean);
-
   for (const segment of segments) {
-    // Remove leading/trailing whitespace and extract first word
-    const firstWord = segment.trim().split(/\s+/)[0];
+    const firstWord = segment.split(/\s+/)[0];
     if (firstWord && !roots.includes(firstWord)) {
       roots.push(firstWord);
     }
   }
-
   return roots;
 }
 
@@ -71,6 +89,27 @@ export function extractRootCommands(command: string): string[] {
  */
 export function isDangerousCommand(command: string): boolean {
   return DANGEROUS_PATTERNS.some((pattern) => pattern.test(command));
+}
+
+/**
+ * Root commands of the segments that match a dangerous pattern. If the
+ * pattern only matches across segments (e.g. a download piped into a shell),
+ * every root command is returned.
+ */
+export function getDangerousRoots(parsed: ParsedShellCommand): string[] {
+  const roots = new Set<string>();
+  for (const segment of parsed.segments) {
+    if (isDangerousCommand(segment.raw) && segment.words[0]) {
+      roots.add(segment.words[0].value);
+    }
+  }
+  if (roots.size === 0) {
+    const whole = parsed.segments.map((s) => s.raw).join(" | ");
+    if (isDangerousCommand(whole)) {
+      return getRootCommands(parsed);
+    }
+  }
+  return [...roots];
 }
 
 /**
@@ -98,6 +137,22 @@ export function validateCommand(
       reason:
         "Command substitution using $(), ``, <(), or >() is not allowed for security reasons",
     };
+  }
+
+  // Structural check: only the conservative grammar is accepted. (Skipped
+  // when substitution is explicitly allowed, which execute_shell never does.)
+  if (!allowCommandSubstitution) {
+    try {
+      parseShellCommand(command);
+    } catch (error) {
+      if (error instanceof ShellSyntaxError) {
+        return {
+          allowed: false,
+          reason: `Unsupported shell syntax: ${error.message}`,
+        };
+      }
+      throw error;
+    }
   }
 
   // Extract root commands for approval checking

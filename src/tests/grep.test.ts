@@ -234,12 +234,20 @@ describe("Grep Tool", () => {
       await fs.writeFile(path.join(testDir, "README.md"), "test");
     });
 
-    it("should filter by glob pattern", async () => {
+    it("matches a slash-less glob by file name at any depth (like ripgrep)", async () => {
       const result = await grepFilesWithValidation("test", testDir, [testDir], {
         globPattern: "*.js",
       });
 
-      expect(result.filesSearched).toBe(0); // *.js only matches current dir
+      expect(result.filesSearched).toBe(1); // src/app.js
+    });
+
+    it("anchors a glob containing a slash to the search root", async () => {
+      const result = await grepFilesWithValidation("test", testDir, [testDir], {
+        globPattern: "lib/*.js",
+      });
+
+      expect(result.filesSearched).toBe(0); // only src/app.js exists
     });
 
     it("should support recursive glob patterns", async () => {
