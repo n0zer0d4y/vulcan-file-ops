@@ -12,6 +12,7 @@ import {
   DEFAULT_GREP_REGEX_FILE_TIMEOUT_MS,
   DEFAULT_GREP_REGEX_TOTAL_TIMEOUT_MS,
 } from "./regex-worker.js";
+import { MAX_TEXT_READ_BYTES } from "./limits.js";
 
 // Global configuration - set by the main module
 let allowedDirectories: string[] = [];
@@ -1201,6 +1202,20 @@ export async function applyFileEdits(
   return formattedDiff;
 }
 
+/**
+ * VFO-15: head/tail/range reads stream the file, but the text they hold
+ * (collected lines plus the current partial line) must stay bounded, e.g.
+ * for a file consisting of one huge line.
+ */
+function assertWithinTextReadLimit(heldChars: number): void {
+  if (heldChars > MAX_TEXT_READ_BYTES) {
+    throw new Error(
+      `Requested lines exceed the ${(MAX_TEXT_READ_BYTES / 1024 / 1024).toFixed(1)} MB ` +
+        `read limit (the file may contain very long lines). Request fewer lines.`,
+    );
+  }
+}
+
 // Memory-efficient implementation to get the last N lines of a file
 export async function tailFile(
   filePath: string,
@@ -1220,6 +1235,7 @@ export async function tailFile(
     let chunk = Buffer.alloc(CHUNK_SIZE);
     let linesFound = 0;
     let remainingText = "";
+    let linesLength = 0;
 
     // Read chunks from the end of the file until we have enough lines
     while (position > 0 && linesFound < numLines) {
@@ -1231,6 +1247,14 @@ export async function tailFile(
 
       // Get the chunk as a string and prepend any remaining text from previous iteration
       const readData = chunk.slice(0, bytesRead).toString("utf-8");
+
+      // VFO-15: bound memory held for one (partial) line plus the output,
+      // and avoid re-splitting an ever-growing line on every chunk.
+      if (position > 0 && !/[\r\n]/.test(readData)) {
+        remainingText = readData + remainingText;
+        assertWithinTextReadLimit(remainingText.length + linesLength);
+        continue;
+      }
       const chunkText = readData + remainingText;
 
       // Split by newlines and count
@@ -1251,7 +1275,9 @@ export async function tailFile(
       ) {
         lines.unshift(chunkLines[i]);
         linesFound++;
+        linesLength += chunkLines[i].length + 1;
       }
+      assertWithinTextReadLimit(linesLength + remainingText.length);
     }
 
     return lines.join("\n");
@@ -1270,6 +1296,7 @@ export async function headFile(
     const lines: string[] = [];
     let buffer = "";
     let bytesRead = 0;
+    let linesLength = 0;
     const chunk = Buffer.alloc(1024); // 1KB buffer
 
     // Read chunks and count lines until we have enough or reach EOF
@@ -1277,17 +1304,21 @@ export async function headFile(
       const result = await fileHandle.read(chunk, 0, chunk.length, bytesRead);
       if (result.bytesRead === 0) break; // End of file
       bytesRead += result.bytesRead;
-      buffer += chunk.slice(0, result.bytesRead).toString("utf-8");
+      const text = chunk.slice(0, result.bytesRead).toString("utf-8");
+      buffer += text;
 
-      const newLineIndex = buffer.lastIndexOf("\n");
+      // Only rescan the buffer when the new chunk completes a line.
+      const newLineIndex = text.includes("\n") ? buffer.lastIndexOf("\n") : -1;
       if (newLineIndex !== -1) {
         const completeLines = buffer.slice(0, newLineIndex).split("\n");
         buffer = buffer.slice(newLineIndex + 1);
         for (const line of completeLines) {
           lines.push(line);
+          linesLength += line.length + 1;
           if (lines.length >= numLines) break;
         }
       }
+      assertWithinTextReadLimit(linesLength + buffer.length);
     }
 
     // If there is leftover content and we still need lines, add it
@@ -1322,6 +1353,7 @@ export async function rangeFile(
     let currentLineNumber = 0;
     let buffer = "";
     let bytesRead = 0;
+    let targetLength = 0;
     const chunk = Buffer.alloc(CHUNK_SIZE);
 
     // Read file sequentially until we reach the end line
@@ -1341,7 +1373,19 @@ export async function rangeFile(
       }
 
       bytesRead += result.bytesRead;
-      buffer += chunk.slice(0, result.bytesRead).toString("utf-8");
+      const text = chunk.slice(0, result.bytesRead).toString("utf-8");
+
+      if (!text.includes("\n")) {
+        if (currentLineNumber + 1 < startLine) {
+          // Middle of a line before the range: its content is never needed.
+          buffer = "";
+        } else {
+          buffer += text;
+          assertWithinTextReadLimit(targetLength + buffer.length);
+        }
+        continue;
+      }
+      buffer += text;
 
       // Process complete lines in buffer
       let newLineIndex = buffer.indexOf("\n");
@@ -1353,6 +1397,8 @@ export async function rangeFile(
         // Check if this line is within our target range
         if (currentLineNumber >= startLine && currentLineNumber <= endLine) {
           targetLines.push(line);
+          targetLength += line.length + 1;
+          assertWithinTextReadLimit(targetLength);
         }
 
         // Early exit if we've collected all needed lines
