@@ -4,8 +4,11 @@
  * This mock allows tests to run without loading the problematic pdfmake ESM module.
  */
 
+import { PassThrough } from "stream";
+
 interface PdfMakeDocument {
   getBuffer(callback: (buffer: Buffer) => void): void;
+  getStream(): PassThrough;
   getBase64(callback: (base64: string) => void): void;
   download(defaultFileName?: string): void;
   open(): void;
@@ -135,6 +138,20 @@ const pdfMake: PdfMakeStatic = {
         setTimeout(() => {
           callback(createMockPdfBuffer(documentDefinition));
         }, 10);
+      },
+      // Mirrors pdfmake's synchronous getStream(): the caller attaches
+      // listeners and calls end() to flush the document.
+      getStream: () => {
+        const stream = new PassThrough();
+        const originalEnd = stream.end.bind(stream);
+        (stream as any).end = () => {
+          setTimeout(() => {
+            stream.write(createMockPdfBuffer(documentDefinition));
+            originalEnd();
+          }, 10);
+          return stream;
+        };
+        return stream;
       },
       getBase64: (callback: (base64: string) => void) => {
         setTimeout(() => {

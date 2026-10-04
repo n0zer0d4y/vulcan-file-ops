@@ -26,6 +26,25 @@ if (isMCP) {
 
 import { runServer } from "./server/index.js";
 
+// Defense in depth (VFO-13): a promise rejection that a third-party library
+// fails to handle must not terminate the stdio server (Node's default for
+// unhandled rejections is to crash). Log one line to STDERR - console.* is
+// a no-op in MCP mode and stdout carries the JSON-RPC stream - and keep
+// running. uncaughtException keeps Node's default (fatal) behavior.
+process.on("unhandledRejection", (reason) => {
+  try {
+    const detail =
+      reason instanceof Error
+        ? `${reason.name}: ${reason.message}`
+        : String(reason);
+    process.stderr.write(
+      `[vulcan-file-ops] unhandledRejection (ignored): ${detail.replace(/\s+/g, " ").slice(0, 2000)}\n`
+    );
+  } catch {
+    // Never let diagnostics throw.
+  }
+});
+
 // Run the server and handle any fatal errors
 runServer().catch((error) => {
   // Only show errors when not running under MCP (to avoid protocol corruption)
