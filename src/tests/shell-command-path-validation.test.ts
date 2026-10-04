@@ -40,8 +40,9 @@ describe("Shell Command Path Validation", () => {
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       }
     });
 
@@ -52,8 +53,9 @@ describe("Shell Command Path Validation", () => {
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       }
     });
 
@@ -80,8 +82,9 @@ describe("Shell Command Path Validation", () => {
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       }
     });
 
@@ -107,8 +110,9 @@ describe("Shell Command Path Validation", () => {
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       }
     });
 
@@ -119,8 +123,9 @@ describe("Shell Command Path Validation", () => {
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       }
     });
 
@@ -215,16 +220,18 @@ describe("Shell Command Path Validation", () => {
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       } else {
         const command = `cat "/etc/passwd"`;
 
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       }
     });
   });
@@ -298,8 +305,9 @@ describe("Shell Command Path Validation", () => {
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       }
     });
   });
@@ -312,16 +320,18 @@ describe("Shell Command Path Validation", () => {
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       } else {
         const command = `cat /etc/passwd`;
 
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       }
     });
 
@@ -396,16 +406,18 @@ describe("Shell Command Path Validation", () => {
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/single .&. .*is not allowed/);
       } else {
         const command = `cat "${testFile}" && cat /etc/passwd`;
 
         await expect(
           handleShellTool("execute_shell", {
             command,
+            workdir: allowedDir,
           })
-        ).rejects.toThrow("Access denied");
+        ).rejects.toThrow(/Access denied: Command contains paths outside allowed directories/);
       }
     });
 

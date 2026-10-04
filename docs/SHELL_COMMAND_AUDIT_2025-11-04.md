@@ -1,5 +1,7 @@
 # Shell Command Directory Bypass - Security Audit Report
 
+> **Update (October 2026, v1.3.0):** The fix described in this report was incomplete. Slash-prefixed absolute paths were treated as command switches, redirection targets written without a space were not validated, paths through symlinks/junctions were checked only lexically, and newline-separated commands bypassed the approved-command list. All of these are fixed in 1.3.0; see CHANGELOG.md.
+
 **Date**: November 4, 2025 (Audit Report)  
 **Original Fix Date**: November 2024  
 **Auditor**: Manual Security Analysis  

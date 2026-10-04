@@ -176,7 +176,11 @@ describe("server e2e: register_directory consent (VFO-07)", () => {
 
       expect(requests).toHaveLength(1);
       expect(requests[0].params.message).toContain(candidateDir);
-      expect(requests[0].params.requestedSchema.required).toEqual(["allow"]);
+      const params = requests[0].params;
+      expect("requestedSchema" in params).toBe(true);
+      if ("requestedSchema" in params) {
+        expect(params.requestedSchema.required).toEqual(["allow"]);
+      }
 
       const listed = await callTool(client, "list_allowed_directories");
       expect(listed.text).toContain(candidateDir);

@@ -72,7 +72,7 @@ This enhanced implementation provides:
 This server supports multiple flexible approaches to directory access:
 
 1. **Pre-configured Access**: Use `--approved-folders` to specify directories on server start for immediate access
-2. **Runtime Registration**: Users can instruct AI agents to register directories during conversation via `register_directory` tool
+2. **Runtime Registration**: Users can instruct AI agents to register directories during conversation via `register_directory` tool. By default you are asked to confirm each new directory through your MCP client (see [Runtime Registration Policy](#runtime-registration-policy))
 3. **MCP Roots Protocol**: Client applications can provide workspace directories dynamically
 4. **Flexible Permissions**: Combine multiple approaches - start with approved folders, add more at runtime
 5. **Secure Boundaries**: All operations validate against registered directories regardless of access method
@@ -109,7 +109,7 @@ npm install @n0zer0d4y/vulcan-file-ops
 
 ### Prerequisites
 
-**Node.js** (version 14 or higher) must be installed on your system. This provides npm and npx, which are required to run this package.
+**Node.js** (version 20.19 or higher, or 22.12 or higher) must be installed on your system. This provides npm and npx, which are required to run this package.
 
 - **Download Node.js**: https://nodejs.org/
 - **Check installation**: Run `node --version` and `npm --version`
@@ -399,6 +399,28 @@ Or enable individual tools:
 }
 ```
 
+#### Shell Commands
+
+`execute_shell` only runs commands whose root command is approved:
+
+- `--approved-commands npm,node,git` — comma-separated allowlist of root commands. Every command in a chain (`;`, `&&`, `||`, `|`) must be approved.
+- `--allow-dangerous-commands rm` — approved commands that may also run when they match a dangerous pattern (for example `rm -rf`, `del /s`, `Remove-Item -Recurse`, `sudo`). Without this flag such commands are always blocked; the AI cannot override it.
+- `--commands-env-file <path>` — read `APPROVED_COMMANDS` from a `.env`-format file. Only that key is used and nothing is added to the server's environment. `--approved-commands` takes priority.
+
+> **Changed in 1.3.0:** the server no longer reads a `.env` file from its working directory. Use `--approved-commands` or `--commands-env-file`. Do not use `--env-file`: Node.js reserves that flag and would apply the file to the server process itself.
+
+> **Note:** `execute_shell` is not a sandbox. An approved interpreter or code-running tool (`node`, `python`, `bash`, `npm`, `git`, `find -exec`, ...) can do anything your user account can do. Only approve commands you are comfortable letting the AI run.
+
+#### Runtime Registration Policy
+
+`--runtime-registration <confirm|allow|deny>` controls the `register_directory` tool:
+
+- `confirm` (default) — you are asked to approve each new directory through your MCP client's confirmation prompt (MCP elicitation). If the client does not support confirmation prompts, registration is refused; add the folder with `--approved-folders` instead, or use `allow`.
+- `allow` — directories are registered without a prompt (the behavior before 1.3.0).
+- `deny` — runtime registration is disabled; only `--approved-folders` and MCP Roots grant access.
+
+Filesystem roots (such as `C:\` or `/`) and your home directory itself can only be registered with `allow`.
+
 #### Combined Configuration
 
 All configuration options can be combined:
@@ -490,7 +512,7 @@ To access a specific directory, instruct the AI agent:
 "Please register the directory C:\path\to\your\folder for access, then list its contents."
 ```
 
-The AI will use the `register_directory` tool to gain access, then perform operations within that directory.
+The AI will use the `register_directory` tool to gain access, then perform operations within that directory. With the default `--runtime-registration confirm` policy your MCP client asks you to approve the directory first.
 
 ## API
 
@@ -526,7 +548,7 @@ Attach images for AI vision analysis
 
 - `path` (string | string[]): Path to image file, or array of paths to attach multiple images at once
 
-**Output:** Image content in MCP format for vision model processing. Supports PNG, JPEG, GIF, WebP, BMP, SVG
+**Output:** Image content in MCP format for vision model processing. Supports PNG, JPEG, GIF and WebP (the formats vision models accept). SVG files are returned as their markup text; BMP is not supported (convert to PNG)
 
 ##### read_multiple_files
 
@@ -708,7 +730,7 @@ Enable runtime access to new directories
 
 - `path` (string): Directory path to register
 
-**Output:** Success confirmation. Directory becomes accessible for operations
+**Output:** Success confirmation. Directory becomes accessible for operations. The directory's real path (symlinks resolved) is registered. Subject to `--runtime-registration` (default: user confirmation via the MCP client).
 
 ##### list_allowed_directories
 
@@ -730,7 +752,7 @@ Find files using glob pattern matching
 - `pattern` (string): Glob pattern (e.g., `**/*.ts`)
 - `excludePatterns` (array, optional): Patterns to exclude
 
-**Output:** List of matching file paths
+**Output:** List of matching file paths. Patterns are limited to 1,000 characters.
 
 ##### grep_files
 
@@ -751,6 +773,8 @@ Search for text patterns within files
 
 **Output:** Matching lines with context, file paths, or match counts
 
+Regex matching runs in a worker thread with a time budget (5 s per file, 30 s per search), so a pathological pattern fails with a timeout error instead of freezing the server. Patterns are limited to 1,000 characters.
+
 #### Shell Operations
 
 ##### execute_shell
@@ -763,6 +787,7 @@ Execute shell commands with security controls
 - `description` (string, optional): Command purpose
 - `workdir` (string, optional): Working directory (must be within allowed directories). If not provided, process.cwd() is used and validated
 - `timeout` (number, optional): Timeout in milliseconds (default: 30000)
+- `requiresApproval` (boolean, optional): Deprecated and ignored (kept for compatibility)
 
 **Output:** Exit code, stdout, stderr, and execution metadata
 
@@ -770,8 +795,11 @@ Execute shell commands with security controls
 
 - At least one approved directory must be configured before executing shell commands
 - Working directory (whether explicit or default process.cwd()) is always validated against allowed directories
-- All file/directory paths in command arguments are automatically extracted and validated against allowed directories
-- Commands referencing paths outside approved directories are blocked, preventing directory restriction bypasses
+- Every command in a chain (`;`, `&&`, `||`, `|`) must be in `--approved-commands`
+- File and directory operands (arguments, option values such as `--out=...`, and redirection targets) are validated against allowed directories after resolving symlinks and junctions; operands with variables that cannot be resolved are refused
+- Commands must be a single line. Not allowed: newlines, command substitution, backticks, a lone `&`, `( )`/`{ }` grouping or script blocks, heredocs, and escaped quotes (`\"`, `\'`)
+- Commands matching dangerous patterns are blocked unless the operator allowed them with `--allow-dangerous-commands`
+- `execute_shell` is not a sandbox: approved interpreters and code-running tools can still do anything your account can do
 
 ### Multi-File Edit Examples
 
@@ -849,7 +877,7 @@ For detailed usage examples, see [Tool Usage Guide](docs/TOOL_USAGE_GUIDE.md)
 
 ## Security
 
-This MCP server implements enterprise-grade security controls to protect against common filesystem vulnerabilities. All security measures are based on industry best practices and address known CVE patterns.
+This MCP server implements security controls to protect against common filesystem vulnerabilities, based on known CVE patterns. To report a vulnerability, please follow [SECURITY.md](SECURITY.md) (private reporting; do not open a public issue).
 
 ### Protected Against
 
@@ -863,17 +891,17 @@ This MCP server implements enterprise-grade security controls to protect against
 #### Command Injection (CWE-78)
 
 - **Protected Pattern**: CVE-2025-54795
-- **Mitigation**: Multi-layer validation including command substitution detection, root command extraction, and dangerous pattern matching
-- **Implementation**: Blocks `$()`, `` ` ` ``, `>()`, `<()` patterns; validates all commands in chains; requires approval for dangerous operations
-- **Example**: Prevents `echo "; malicious_cmd; echo"` injection attempts
+- **Mitigation**: Commands are parsed with a conservative, quote-aware parser; only a small grammar that bash and PowerShell interpret the same way is accepted, and every command in a chain must be approved
+- **Implementation**: Rejects newlines and control characters, command substitution, backticks, escaped quotes, a lone `&`, grouping/script blocks and heredocs; dangerous patterns are blocked unless the operator allows them (`--allow-dangerous-commands`)
+- **Example**: `echo "\"; malicious_cmd; echo \""` and newline-separated commands are rejected
 
 #### Shell Command Directory Bypass (CWE-22)
 
-- **Protected Pattern**: Path restriction bypass via absolute paths in shell commands
-- **Mitigation**: Path extraction and validation for all file/directory paths embedded in command arguments
-- **Implementation**: Extracts paths from command strings (handles Windows/Unix paths, quotes, relative paths, environment variables), validates each path against allowed directories before execution
-- **Example**: Blocks `type C:\Windows\System32\drivers\etc\hosts` and `cat /etc/passwd` when these paths are outside approved directories
-- **Scope**: Applies to all shell commands executed via `execute_shell` tool - paths in arguments are validated just like filesystem operations
+- **Protected Pattern**: Path restriction bypass via paths in shell commands
+- **Mitigation**: Every file operand (arguments, option values such as `--out=...`, redirection targets, `cd` targets) is validated against allowed directories after resolving symlinks and junctions
+- **Implementation**: Operands are checked lexically, after `realpath`, and with physical resolution (symlinks followed before `..`, as a POSIX kernel does); relative operands are checked against every directory a `cd` could leave the command in; unresolvable variables and PowerShell provider paths (`env:`, `HKLM:`, ...) are refused
+- **Example**: Blocks `cat /etc/passwd`, `type C:\Windows\System32\drivers\etc\hosts`, `echo x >C:\outside\file` and `cat link/secret` (where `link` points outside) when the targets are outside approved directories
+- **Scope**: `execute_shell` is not a sandbox. An approved interpreter or code-running tool can still do anything your account can do, so approve commands sparingly
 
 #### Symlink Attacks (CWE-59 / CWE-61)
 
@@ -899,16 +927,17 @@ This MCP server implements enterprise-grade security controls to protect against
 
 #### Command Execution
 
-- **Command Whitelisting**: Only pre-approved commands execute without confirmation
-- **Pattern Detection**: Blocks dangerous patterns (destructive, privilege escalation, network execution)
-- **Command Substitution Blocking**: Prevents `$()`, backticks, process substitution
+- **Command Allowlist**: Only commands listed in `--approved-commands` execute; everything else is blocked
+- **Pattern Detection**: Blocks dangerous patterns (destructive, privilege escalation, network execution) unless the operator allows the command with `--allow-dangerous-commands`
+- **Structural Parsing**: Rejects command substitution, backticks, newlines, grouping and other constructs that could hide commands from validation
 - **Root Command Extraction**: Analyzes all commands in chained operations for approval
-- **Path Argument Validation**: Extracts and validates all file/directory paths in command arguments against allowed directories (prevents bypass via absolute paths in commands)
+- **Path Operand Validation**: Validates all file/directory operands, including redirection targets, against allowed directories with symlink resolution
 
 #### Access Controls
 
 - **Directory Whitelisting**: Operations restricted to explicitly approved directories
-- **Runtime Registration**: Additional directories require explicit registration via `register_directory` tool
+- **Runtime Registration**: Additional directories require registration via `register_directory`, which asks the user to confirm by default (`--runtime-registration`)
+- **Resource Limits**: Full-file text reads are capped at 10 MB, `attach_image` at 10 MB per image and 20 MB per call, and Office/ODF documents are checked for zip bombs before parsing
 - **Atomic Validation**: Paths validated before any file operations begin
 - **Cross-Platform Safety**: Proper handling of Windows/Unix path differences and UNC paths
 
@@ -917,7 +946,7 @@ This MCP server implements enterprise-grade security controls to protect against
 1. **Minimize Approved Directories**: Only approve directories that require AI access
 2. **Use Directory Filtering**: Exclude sensitive folders (e.g., `.git`, `node_modules`) from listings
 3. **Limit Tool Access**: Enable only necessary tools via `--enabled-tools` or `--enabled-tool-categories`
-4. **Command Approval**: Pre-approve safe commands via `--approved-commands`; require approval for others
+4. **Command Approval**: Approve only the commands you need via `--approved-commands`; avoid shells and interpreters (`bash`, `sh`, `powershell`, `node`, `python`, `eval`), which can run arbitrary code
 5. **Monitor Operations**: Review MCP client logs for unexpected access attempts
 6. **Regular Updates**: Keep the server updated to receive security patches
 
@@ -928,12 +957,18 @@ This server has been comprehensively audited against known vulnerabilities and s
 **CVE Protection Status:**
 
 - ✅ CVE-2025-54794 (Path Restriction Bypass) - **FIXED**
-- ✅ CVE-2025-54795 (Command Injection) - **PROTECTED**
-- ✅ CVE-2025-53109 (Symlink Attacks) - **PROTECTED**
+- ✅ CVE-2025-54795 (Command Injection) - **PROTECTED** (escaped-quote and newline variants closed in 1.3.0)
+- ✅ CVE-2025-53109 (Symlink Attacks) - **PROTECTED** (`make_directory` and `execute_shell` gaps closed in 1.3.0)
 - ✅ CVE-2025-53110 (Directory Containment Bypass) - **PROTECTED**
-- ✅ Shell Execution Directory Bypass - **FIXED** (November 2024)
+- ✅ Shell Execution Directory Bypass - **FIXED** in 1.3.0. The November 2024 fix was incomplete: slash-prefixed paths, attached redirections and symlinked paths could still escape
 
 **Latest Security Audits:**
+
+- 📋 Security hardening release 1.3.0 - October 2026
+  - **Scope**: Independent audit of GitHub issue #3 plus a Snyk Open Source / Snyk Code / container scan and manual review
+  - **Fixed**: newline command chaining past the allowlist, shell path validation gaps (slash paths, redirections, symlinks), self-approved dangerous commands, `make_directory` symlink escape, AI-initiated directory registration without consent, `.env` loading from the working directory, PDF image handling that could crash the server or fetch remote URLs, unbounded regex/read/decompression resource use, symlink dereferencing in directory copies
+  - **Dependencies**: refreshed with a 14-day release quarantine; all packages pass `npm audit signatures`
+  - See [CHANGELOG.md](CHANGELOG.md) for details
 
 - 📋 [Snyk Vulnerability Audit Report - November 2025](docs/SNYK_VULNERABILITY_AUDIT_2025.md)
   - **Status**: 5/6 Snyk findings validated as false positives, 1 finding fixed
@@ -945,10 +980,10 @@ This server has been comprehensively audited against known vulnerabilities and s
   - **Focus**: CVE-2025-54794/54795 pattern analysis and mitigation strategies
   - **Date**: November 4, 2025 (Manual CVE Research)
 - 📋 [Shell Command Directory Bypass Audit - November 2025](docs/SHELL_COMMAND_AUDIT_2025-11-04.md)
-  - **Status**: ✅ Fixed November 2024 (Retrospective documentation)
+  - **Status**: Partially fixed November 2024; completed in 1.3.0 (October 2026)
   - **Issue**: Shell commands previously could access files outside approved directories via absolute paths
   - **Severity**: HIGH (CVSS ~7.5) - Path traversal via command arguments
-  - **Fix Status**: ✅ FIXED - Path extraction and validation implemented
+  - **Fix Status**: ✅ FIXED in 1.3.0 - symlink-aware validation of all operands, including redirections
   - **Test Coverage**: 419 lines of comprehensive tests, all passing
 - 📋 [Security Test Coverage Summary](docs/SECURITY_TEST_SUMMARY.md)
   - **Test Suite**: 2000+ lines of security-focused tests in `src/tests/`
@@ -999,7 +1034,7 @@ This server has been comprehensively audited against known vulnerabilities and s
 **Attach Image Tool** (`attach_image`):
 
 - Attaches images for AI vision analysis (requires vision-capable MCP client)
-- **Supported formats**: PNG, JPEG, GIF, WebP, BMP, SVG
+- **Supported formats**: PNG, JPEG, GIF, WebP (SVG is returned as markup text; BMP is not supported)
 - **Batch support**: Can attach single image or multiple images in one call
 - Images are presented to the AI as if uploaded directly by the user
 - Enables visual analysis: reading text in images, analyzing diagrams, describing scenes

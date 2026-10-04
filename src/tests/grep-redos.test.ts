@@ -93,7 +93,8 @@ async function referenceGrep(
     }
     if (globPattern) {
       const relativePath = path.relative(searchPath, filePath);
-      if (!minimatch(relativePath, globPattern, { dot: true })) return;
+      const matchBase = !/[\\/]/.test(globPattern);
+      if (!minimatch(relativePath, globPattern, { dot: true, matchBase })) return;
     }
     result.filesSearched++;
     const content = await fs.readFile(filePath, "utf-8");

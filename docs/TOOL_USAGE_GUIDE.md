@@ -94,6 +94,19 @@ Use `grep_files` to search for text patterns within files:
 }
 ```
 
+**Filter by glob:**
+
+```json
+{
+  "pattern": "TODO",
+  "glob": "*.md"
+}
+```
+
+A glob without a slash (`*.md`) matches file names at any depth, like ripgrep. A glob with a slash (`src/**/*.ts`) is matched against the path relative to the search root.
+
+Regular expressions run with a time limit (5 s per file, 30 s per search). A pattern that causes catastrophic backtracking fails with a timeout error instead of freezing the server. Patterns are limited to 1,000 characters.
+
 ### File Deletion (`delete_files`)
 
 Use `delete_files` to delete single or multiple files and directories:
@@ -159,8 +172,7 @@ Execute shell commands on the host system with comprehensive security controls.
   "command": "npm install",
   "description": "Install project dependencies",
   "workdir": "/path/to/project",
-  "timeout": 30000,
-  "requiresApproval": false
+  "timeout": 30000
 }
 ```
 
@@ -168,7 +180,7 @@ Execute shell commands on the host system with comprehensive security controls.
 - **description** (optional): Brief description of command purpose
 - **workdir** (optional): Working directory (must be within allowed directories)
 - **timeout** (optional): Timeout in milliseconds (default: 30000)
-- **requiresApproval** (optional): Flag for dangerous operations (default: false)
+- **requiresApproval** (optional): Deprecated and ignored; dangerous commands can only be allowed by the server operator (`--allow-dangerous-commands`)
 
 **Platform Behavior:**
 
@@ -177,10 +189,12 @@ Execute shell commands on the host system with comprehensive security controls.
 
 **Security:**
 
-- Command substitution patterns (`$()`, backticks, `<()`, `>()`) are blocked
-- Dangerous commands require approval (rm -rf, sudo, format, kill -9, etc.)
+- Command substitution, backticks, newlines, a lone `&`, `( )`/`{ }` grouping, heredocs and escaped quotes are rejected
+- Every command in a chain must be approved
+- Dangerous commands (rm -rf, sudo, format C:, kill -9, etc.) are blocked unless the operator allows them with `--allow-dangerous-commands`
 - Working directory must be within allowed directories
-- Configurable command approval system via CLI or .env file
+- File operands, option values and redirection targets are validated against allowed directories (symlinks resolved)
+- `execute_shell` is not a sandbox: approved interpreters (`node`, `python`, `bash`, ...) can run arbitrary code
 
 **Configuration:**
 
@@ -194,7 +208,7 @@ Commands can be pre-approved via:
    }
    ```
 
-2. **.env file** (fallback):
+2. **Commands env file** (fallback, `--commands-env-file <path>`): only the `APPROVED_COMMANDS` key is read, and nothing is added to the environment. Since 1.3.0 the server no longer reads `.env` from its working directory.
    ```env
    APPROVED_COMMANDS=npm,node,git,ls,pwd,echo
    ```
@@ -204,6 +218,7 @@ Commands can be pre-approved via:
 - **Safe (read-only)**: `ls,pwd,cat,echo,head,tail,grep,find,which,type,file,stat`
 - **Development**: `npm,node,git,python,pip,cargo,go,make,java,mvn`
 - **System** (use with caution): `sudo,apt,yum,brew,systemctl`
+- **Avoid**: shells and evaluators (`bash`, `sh`, `powershell`, `pwsh`, `cmd`, `eval`), which bypass command restrictions
 
 **Example Result:**
 

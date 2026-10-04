@@ -629,7 +629,7 @@ describe("Shell Tool", () => {
       ).rejects.toThrow("Dangerous command pattern detected");
     });
 
-    test("allows dangerous pattern on approved command with explicit approval", async () => {
+    test("runs an approved delete command that does not match a dangerous pattern (requiresApproval is ignored)", async () => {
       // Add platform-specific delete command to approved commands
       const deleteCmd = os.platform() === "win32" ? "del" : "rm";
       initializeShellTool(["ls", "pwd", "echo", "cat", deleteCmd]);
@@ -638,7 +638,7 @@ describe("Shell Tool", () => {
       const testFile = `${os.tmpdir()}/test-delete-${Date.now()}.txt`;
       require("fs").writeFileSync(testFile, "test");
 
-      // Delete command is approved and requiresApproval=true, should work
+      // Single-file delete is not a dangerous pattern; requiresApproval has no effect
       const command = os.platform() === "win32" ? `del ${testFile}` : `rm ${testFile}`;
       const result = await handleShellTool("execute_shell", {
         command,
@@ -646,7 +646,7 @@ describe("Shell Tool", () => {
         workdir: os.tmpdir(),
       });
 
-      // Command is approved with explicit approval, should succeed
+      // Approved command with an in-sandbox path should succeed
       expect(result.isError).toBe(false);
     });
 
