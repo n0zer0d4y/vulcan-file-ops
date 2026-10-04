@@ -30,6 +30,8 @@ import {
   ToolSchema,
   RootsListChangedNotificationSchema,
   LATEST_PROTOCOL_VERSION,
+  ErrorCode,
+  McpError,
   type Root,
 } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs/promises";
@@ -59,7 +61,14 @@ const VERSION = packageJson.version;
 // Import tool handlers
 import { getReadTools } from "../tools/read-tools.js";
 import { getWriteTools } from "../tools/write-tools.js";
-import { getFileSystemTools } from "../tools/filesystem-tools.js";
+import {
+  getFileSystemTools,
+  isRuntimeRegistrationPolicy,
+  setRuntimeRegistrationPolicy,
+  setDirectoryRegistrationConsentHandler,
+  RUNTIME_REGISTRATION_POLICIES,
+  type RuntimeRegistrationPolicy,
+} from "../tools/filesystem-tools.js";
 import { getSearchTools } from "../tools/search-tools.js";
 import { initializeShellTool, getShellTools } from "../tools/shell-tool.js";
 
@@ -70,6 +79,7 @@ let approvedCommandsFromArgs: string[] = [];
 let ignoredFolders: string[] = [];
 let enabledToolCategories: string[] = [];
 let enabledTools: string[] = [];
+let runtimeRegistrationPolicy: RuntimeRegistrationPolicy = "confirm";
 
 // Command line argument parsing
 function parseArguments() {
@@ -104,6 +114,12 @@ function parseArguments() {
     );
     console.error(
       "  --approved-commands <cmds...>   Allow specific shell commands (comma-separated)"
+    );
+    console.error(
+      "  --runtime-registration <mode>   register_directory policy: confirm (default; user must"
+    );
+    console.error(
+      "                                  approve via the MCP client), allow (no prompt), deny"
     );
     console.error("  --help, -h                     Show this help message");
     console.error("  --version, -v                  Show version information");
@@ -225,6 +241,33 @@ function parseArguments() {
           .filter((tool) => tool.length > 0)
       );
 
+      continue;
+    }
+
+    if (
+      arg === "--runtime-registration" ||
+      arg.startsWith("--runtime-registration=")
+    ) {
+      let value: string | undefined;
+      if (arg.includes("=")) {
+        value = arg.slice(arg.indexOf("=") + 1);
+      } else if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        value = args[++i];
+      }
+      if (!value || !isRuntimeRegistrationPolicy(value.trim())) {
+        console.error(
+          `Error: Invalid value for --runtime-registration: '${value ?? ""}'. ` +
+            `Expected one of: ${RUNTIME_REGISTRATION_POLICIES.join(", ")}`
+        );
+        console.error("Run with --help for usage information.");
+        process.exit(1);
+      }
+      runtimeRegistrationPolicy = value.trim() as RuntimeRegistrationPolicy;
+      parsingIgnoredFolders = false;
+      parsingApprovedFolders = false;
+      parsingEnabledToolCategories = false;
+      parsingEnabledTools = false;
+      parsingApprovedCommands = false;
       continue;
     }
 
@@ -438,6 +481,7 @@ async function initializeDirectories() {
   setIgnoredFolders(ignoredFolders);
   // Set individual enabled tools (categories are combined dynamically in tool handlers)
   setEnabledTools(enabledTools);
+  setRuntimeRegistrationPolicy(runtimeRegistrationPolicy);
 
   // Load shell command configuration
   let finalApprovedCommands: string[] = [];
@@ -540,6 +584,47 @@ const server = new Server(
 // _clientCapabilities and _clientVersion never get set, and protocol version
 // negotiation is bypassed (should respond with max supported ≤ client's requested).
 // Instructions are injected at runtime in runServer() after directories initialize.
+
+// Security (VFO-07): under the default "confirm" policy, register_directory
+// asks the human through MCP elicitation before widening the sandbox.
+// Clients without elicitation support get "unsupported" (registration refused).
+const REGISTRATION_CONSENT_TIMEOUT_MS = 5 * 60 * 1000;
+setDirectoryRegistrationConsentHandler(async (realPath) => {
+  if (!server.getClientCapabilities()?.elicitation) {
+    return "unsupported";
+  }
+  try {
+    const result = await server.elicitInput(
+      {
+        message:
+          `Allow the AI assistant to read and modify files in:\n${realPath}\n\n` +
+          "Only approve directories you trust it to change.",
+        requestedSchema: {
+          type: "object",
+          properties: {
+            allow: {
+              type: "boolean",
+              title: "Allow access",
+              description:
+                "Grant read/write access to this directory for this session",
+            },
+          },
+          required: ["allow"],
+        },
+      },
+      { timeout: REGISTRATION_CONSENT_TIMEOUT_MS }
+    );
+    return result.action === "accept" && result.content?.allow === true
+      ? "accepted"
+      : "declined";
+  } catch (error) {
+    if (error instanceof McpError && error.code === ErrorCode.MethodNotFound) {
+      return "unsupported";
+    }
+    // Timeouts, invalid responses, transport errors: fail closed
+    return "declined";
+  }
+});
 
 // Ping handler - for health checks
 server.setRequestHandler(PingRequestSchema, async () => {
