@@ -6,9 +6,7 @@ import {
 } from "../types/index.js";
 import {
   validateCommand,
-  isCommandApproved,
-  extractRootCommands,
-  isDangerousCommand,
+  getDangerousRoots,
   getShellConfig,
 } from "../utils/command-validation.js";
 import {
@@ -16,8 +14,8 @@ import {
   type ExecutionResult,
 } from "../utils/shell-execution.js";
 import { validatePath, getAllowedDirectories } from "../utils/lib.js";
-import { extractPathsFromCommand } from "../utils/command-path-extraction.js";
-import { isPathWithinAllowedDirectories } from "../utils/path-validation.js";
+import { findDisallowedCommandPaths } from "../utils/command-path-extraction.js";
+import { parseShellCommand, getRootCommands } from "../utils/shell-parser.js";
 import { sanitizeToolInputSchema } from "../utils/tool-schema.js";
 
 const ToolInputSchema = ToolSchema.shape.inputSchema;
@@ -26,12 +24,23 @@ type ToolInput = any;
 // Global state for approved commands
 let approvedCommands: Set<string> = new Set();
 let alwaysApprovedCommands: Set<string> = new Set();
+// Root commands the operator allows to match dangerous patterns
+let dangerousCommandAllowlist: Set<string> = new Set();
 
 /**
- * Initialize the shell tool with approved commands
+ * Initialize the shell tool with approved commands and (optionally) the root
+ * commands that may run even when they match a dangerous pattern.
  */
-export function initializeShellTool(commands: string[]): void {
+export function initializeShellTool(
+  commands: string[],
+  dangerousCommands: string[] = [],
+): void {
   approvedCommands = new Set(commands);
+  dangerousCommandAllowlist = new Set(dangerousCommands);
+}
+
+export function getDangerousCommandAllowlist(): string[] {
+  return Array.from(dangerousCommandAllowlist);
 }
 
 /**
@@ -80,8 +89,13 @@ export function getShellTools() {
         `\n\n⚠️  SECURITY REQUIREMENTS:\n` +
         `- At least ONE approved directory must be configured before executing any shell commands\n` +
         `- Working directory (workdir parameter or process.cwd()) MUST be within allowed directories\n` +
-        `- All file/directory paths in command arguments are validated against allowed directories\n` +
-        `- Command substitution and dangerous patterns may be restricted\n` +
+        `- All file/directory paths in arguments and redirections are validated against allowed directories (symlinks are resolved)\n` +
+        `- Every command in a chain must be approved; chain with ';', '&&', '||' or '|' on a single line` +
+        (shellConfig.platform === "Windows"
+          ? ` (on Windows use ';' or '|': Windows PowerShell 5.1 does not support '&&' or '||')\n`
+          : `\n`) +
+        `- Not allowed: newlines, command substitution, backticks, a lone '&', ( ) { } grouping or script blocks, heredocs, escaped quotes (\\" \\')\n` +
+        `- Commands matching dangerous patterns are blocked unless the server operator allowed them\n` +
         `\n` +
         `If no workdir is specified, the server's current working directory will be used and validated.` +
         approvedCommandsText +
@@ -155,26 +169,21 @@ export async function handleShellTool(
   // Validate arguments
   const validatedArgs = ShellCommandArgsSchema.parse(args);
 
-  // Validate command security
+  // Validate command security (substitution, control characters, grammar)
   const commandValidation = validateCommand(validatedArgs.command, false);
   if (!commandValidation.allowed) {
-    throw new Error(`Command validation failed: ${commandValidation.reason}`);
-  }
-
-  // Extract root commands for approval checking
-  const rootCommands = extractRootCommands(validatedArgs.command);
-  const allApproved = rootCommands.every(
-    (cmd) => approvedCommands.has(cmd) || alwaysApprovedCommands.has(cmd)
-  );
-
-  // SECURITY FIX: Block ALL unapproved commands immediately
-  // Previously, commands were only blocked if (!allApproved && (requiresApproval || isDangerous))
-  // This allowed unapproved non-dangerous commands to execute by default
-  if (!allApproved) {
-    const unapprovedCommands = rootCommands.filter(
-      (cmd) => !approvedCommands.has(cmd) && !alwaysApprovedCommands.has(cmd)
+    throw new Error(
+      `Access denied: Command validation failed: ${commandValidation.reason}`
     );
+  }
+  const parsed = parseShellCommand(validatedArgs.command);
 
+  // Every command in the chain must be approved
+  const rootCommands = getRootCommands(parsed);
+  const unapprovedCommands = rootCommands.filter(
+    (cmd) => !approvedCommands.has(cmd) && !alwaysApprovedCommands.has(cmd)
+  );
+  if (rootCommands.length === 0 || unapprovedCommands.length > 0) {
     const approvedList = Array.from(approvedCommands).join(", ");
     throw new Error(
       `Access denied: Command not in approved list.\n` +
@@ -185,23 +194,23 @@ export async function handleShellTool(
     );
   }
 
-  // SECURITY: Check dangerous patterns even for approved commands
-  // This provides defense-in-depth against accidentally approving dangerous commands
-  const isDangerous = isDangerousCommand(validatedArgs.command);
-  if (isDangerous && !validatedArgs.requiresApproval) {
+  // Dangerous patterns are blocked even for approved commands unless the
+  // server operator explicitly allowed that root command. The caller cannot
+  // opt in: requiresApproval is ignored.
+  const blockedDangerousRoots = getDangerousRoots(parsed).filter(
+    (cmd) => !dangerousCommandAllowlist.has(cmd)
+  );
+  if (blockedDangerousRoots.length > 0) {
     throw new Error(
-      `⚠️  Dangerous command pattern detected.\n` +
+      `Access denied: Dangerous command pattern detected.\n` +
         `Command: ${validatedArgs.command}\n` +
-        `This command requires explicit approval.\n` +
-        `Set requiresApproval: true in the command arguments to proceed.`
+        `Blocked commands: ${blockedDangerousRoots.join(", ")}\n` +
+        `The server operator can allow these with --allow-dangerous-commands.`
     );
   }
 
-  // SECURITY FIX: Validate working directory ALWAYS (not just if provided)
-  // This prevents bypass via process.cwd() when workdir is omitted
+  // Validate working directory ALWAYS (not just if provided)
   const allowedDirs = getAllowedDirectories();
-
-  // Require at least one approved directory for shell execution
   if (allowedDirs.length === 0) {
     throw new Error(
       `Access denied: Shell execution requires at least one approved directory.\n` +
@@ -215,7 +224,6 @@ export async function handleShellTool(
     );
   }
 
-  // Always validate working directory against allowed directories
   let workdir = validatedArgs.workdir || process.cwd();
   try {
     workdir = await validatePath(workdir);
@@ -234,56 +242,26 @@ export async function handleShellTool(
     );
   }
 
-  // Extract and validate paths from command arguments
+  // Validate every file system operand (arguments and redirection targets),
+  // resolving symlinks/junctions
+  let deniedPaths: string[];
   try {
-    const extractedPaths = extractPathsFromCommand(
-      validatedArgs.command,
-      workdir
-    );
-
-    if (extractedPaths.length > 0) {
-      const allowedDirs = getAllowedDirectories();
-
-      // If no allowed directories are configured, block all paths for security
-      if (allowedDirs.length === 0) {
-        throw new Error(
-          `Access denied: Command contains paths but no allowed directories are configured.\n` +
-            `Extracted paths:\n` +
-            extractedPaths.map((p) => `  - ${p}`).join("\n") +
-            `\n\nPlease configure allowed directories using --approved-folders or register_directory tool.`
-        );
-      }
-
-      // Validate each extracted path
-      const invalidPaths: string[] = [];
-      for (const extractedPath of extractedPaths) {
-        if (!isPathWithinAllowedDirectories(extractedPath, allowedDirs)) {
-          invalidPaths.push(extractedPath);
-        }
-      }
-
-      if (invalidPaths.length > 0) {
-        throw new Error(
-          `Access denied: Command contains paths outside allowed directories:\n` +
-            invalidPaths.map((p) => `  - ${p}`).join("\n") +
-            `\n\nAllowed directories:\n` +
-            allowedDirs.map((d) => `  - ${d}`).join("\n") +
-            `\n\nTo access these paths, register their parent directories using register_directory tool.`
-        );
-      }
-    }
+    deniedPaths = await findDisallowedCommandPaths(parsed, workdir);
   } catch (error) {
-    // If path extraction fails, be conservative and block
-    // (better to block than allow potentially unsafe commands)
-    if (error instanceof Error && error.message.includes("Access denied")) {
-      throw error;
-    }
-    // For extraction errors, block the command to be safe
     throw new Error(
-      `Path validation failed: ${
+      `Access denied: Path validation failed: ${
         error instanceof Error ? error.message : String(error)
       }\n` +
         `Command blocked for security. Please ensure all paths in the command are within allowed directories.`
+    );
+  }
+  if (deniedPaths.length > 0) {
+    throw new Error(
+      `Access denied: Command contains paths outside allowed directories:\n` +
+        deniedPaths.map((p) => `  - ${p}`).join("\n") +
+        `\n\nAllowed directories:\n` +
+        allowedDirs.map((d) => `  - ${d}`).join("\n") +
+        `\n\nTo access these paths, register their parent directories using register_directory tool.`
     );
   }
 

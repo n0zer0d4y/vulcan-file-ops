@@ -1,241 +1,239 @@
 import path from "path";
 import os from "os";
-import { expandHome } from "./path-utils.js";
+import fs from "fs/promises";
+import { isPathCanonicallyAllowed } from "./lib.js";
+import type { ParsedShellCommand, ShellWord } from "./shell-parser.js";
 
 /**
- * Extract file and directory paths from shell command arguments
- * 
- * This function parses shell commands to identify file/directory paths
- * that need to be validated against allowed directories. It handles:
- * - Windows paths (C:\path, \\server\share\path)
- * - Unix paths (/path, ~/path)
- * - Relative paths (./path, ../path) - resolved to absolute
- * - Quoted paths ("path with spaces")
- * - Environment variables ($HOME, %USERPROFILE%)
- * 
- * @param command - The shell command string
- * @param workdir - Working directory for resolving relative paths
- * @returns Array of absolute paths found in the command
+ * Finds file system operands of a parsed shell command that resolve outside
+ * the allowed directories (lexically, through symlinks/junctions, or after
+ * physical "..").
+ *
+ * An argument is treated as a path if it looks like one (absolute, drive,
+ * UNC, ~, ./ ../, contains a separator) or if it names something that exists
+ * relative to the working directory. Relative operands are checked against
+ * every working directory the command might be in, because a cd/pushd can
+ * fail or (in a pipeline) not persist.
  */
-export function extractPathsFromCommand(
-  command: string,
-  workdir: string
-): string[] {
-  if (!command || !command.trim()) {
-    return [];
+
+const CD_COMMANDS = new Set([
+  "cd",
+  "chdir",
+  "pushd",
+  "set-location",
+  "sl",
+  "push-location",
+]);
+
+// PowerShell provider drives that are not the file system.
+const POWERSHELL_PROVIDER_PATH =
+  /^(env|hklm|hkcu|hkcr|hku|hkcc|cert|function|variable|alias|wsman|temp):/i;
+
+const URL_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
+
+interface ExpandedWord {
+  value: string;
+  unresolved: boolean;
+}
+
+function expandVariables(word: ShellWord): ExpandedWord {
+  // Single quotes suppress expansion in both bash and PowerShell.
+  if (word.singleQuoted) {
+    return { value: word.value, unresolved: false };
   }
 
-  const paths: string[] = [];
-  const tokens = tokenizeCommand(command);
+  let unresolved = false;
+  const lookup = (name: string) => {
+    const value = process.env[name];
+    if (value === undefined) {
+      unresolved = true;
+      return "";
+    }
+    return value;
+  };
 
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    
-    // Skip command name itself (first token)
-    if (i === 0) {
-      continue;
+  let value = word.value
+    .replace(/\$env:([A-Za-z_][A-Za-z0-9_]*)/gi, (_, name) => lookup(name))
+    .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, name) => lookup(name))
+    .replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, name) => lookup(name));
+
+  // Anything else that still looks like an expansion cannot be validated.
+  if (/\$[A-Za-z_{]/.test(value)) {
+    unresolved = true;
+  }
+
+  if (!word.quoted) {
+    if (value === "~") {
+      value = os.homedir();
+    } else if (value.startsWith("~/") || value.startsWith("~\\")) {
+      value = path.join(os.homedir(), value.slice(2));
+    }
+  }
+
+  return { value, unresolved };
+}
+
+function looksLikePath(value: string): boolean {
+  if (!value || URL_PATTERN.test(value)) {
+    return false;
+  }
+  return (
+    path.isAbsolute(value) ||
+    /^[A-Za-z]:/.test(value) ||
+    value.startsWith("\\\\") ||
+    value === "." ||
+    value === ".." ||
+    value.startsWith("./") ||
+    value.startsWith("../") ||
+    value.startsWith(".\\") ||
+    value.startsWith("..\\") ||
+    value.includes("/") ||
+    value.includes("\\")
+  );
+}
+
+async function exists(p: string): Promise<boolean> {
+  try {
+    await fs.lstat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Value attached to an option, e.g. --out=X, -Path:X, -C:\X, -I../X. */
+function attachedOptionValue(flag: string): string | null {
+  const drive = /^-[A-Za-z]([A-Za-z]:[\\/].*)$/.exec(flag);
+  if (drive) {
+    return drive[1];
+  }
+  const assigned = /^-{1,2}[A-Za-z][\w-]*[=:](.+)$/.exec(flag);
+  if (assigned && looksLikePath(assigned[1])) {
+    return assigned[1];
+  }
+  const short = /^-[A-Za-z](.+)$/.exec(flag);
+  if (short && looksLikePath(short[1])) {
+    return short[1];
+  }
+  return null;
+}
+
+export async function findDisallowedCommandPaths(
+  parsed: ParsedShellCommand,
+  workdir: string,
+): Promise<string[]> {
+  const denied = new Set<string>();
+  const possibleCwds = [workdir];
+
+  const checkPath = async (candidate: string) => {
+    const bases = path.isAbsolute(candidate) ? [workdir] : possibleCwds;
+    for (const base of bases) {
+      if (!(await isPathCanonicallyAllowed(candidate, base))) {
+        denied.add(
+          path.isAbsolute(candidate) ? candidate : path.join(base, candidate),
+        );
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const resolveWord = (word: ShellWord): string | null => {
+    const expanded = expandVariables(word);
+    if (expanded.unresolved) {
+      denied.add(
+        `${word.value} (contains a variable reference that cannot be resolved for validation)`,
+      );
+      return null;
+    }
+    if (
+      process.platform === "win32" &&
+      (POWERSHELL_PROVIDER_PATH.test(expanded.value) ||
+        expanded.value.includes("::"))
+    ) {
+      denied.add(`${expanded.value} (PowerShell provider paths are not allowed)`);
+      return null;
+    }
+    return expanded.value;
+  };
+
+  for (const segment of parsed.segments) {
+    const [rootWord, ...args] = segment.words;
+    const root = rootWord ? rootWord.value.toLowerCase() : "";
+    const candidates: string[] = [];
+    const operands: string[] = [];
+
+    for (const word of args) {
+      const value = resolveWord(word);
+      if (value === null || value === "" || URL_PATTERN.test(value)) {
+        continue;
+      }
+
+      if (value.startsWith("-")) {
+        const attached = attachedOptionValue(value);
+        if (attached) {
+          candidates.push(attached);
+        }
+        continue;
+      }
+
+      operands.push(value);
+
+      // On Windows "/x" is either a switch or a path on the current drive.
+      if (
+        process.platform === "win32" &&
+        value.startsWith("/") &&
+        !/[\\/]/.test(value.slice(1))
+      ) {
+        if (await exists(path.resolve(value))) {
+          candidates.push(value);
+        }
+        continue;
+      }
+
+      if (looksLikePath(value)) {
+        candidates.push(value);
+        continue;
+      }
+
+      for (const base of possibleCwds) {
+        if (await exists(path.join(base, value))) {
+          candidates.push(value);
+          break;
+        }
+      }
     }
 
-    // Skip flags and options
-    if (isFlagOrOption(token)) {
-      // Some flags take arguments (like -o output.txt)
-      // Check if next token might be a path argument
-      if (i + 1 < tokens.length) {
-        const nextToken = tokens[i + 1];
-        if (isLikelyPathArgument(nextToken)) {
-          const resolvedPath = resolvePath(nextToken, workdir);
-          if (resolvedPath) {
-            paths.push(resolvedPath);
-            i++; // Skip the next token since we processed it
+    for (const redirect of segment.redirects) {
+      if (!redirect.target) {
+        continue;
+      }
+      const value = resolveWord(redirect.target);
+      if (value) {
+        candidates.push(value);
+      }
+    }
+
+    for (const candidate of candidates) {
+      await checkPath(candidate);
+    }
+
+    if (CD_COMMANDS.has(root)) {
+      const target = operands[0] ?? os.homedir();
+      if (target === "-") {
+        denied.add("cd - (previous directory cannot be validated)");
+        continue;
+      }
+      if (await checkPath(target)) {
+        for (const base of [...possibleCwds]) {
+          const next = path.resolve(base, target);
+          if (!possibleCwds.includes(next)) {
+            possibleCwds.push(next);
           }
         }
       }
-      continue;
-    }
-
-    // Check if token is a path
-    if (isLikelyPathArgument(token)) {
-      const resolvedPath = resolvePath(token, workdir);
-      if (resolvedPath) {
-        paths.push(resolvedPath);
-      }
     }
   }
 
-  return paths;
+  return [...denied];
 }
-
-/**
- * Tokenize command string, handling quoted arguments
- */
-function tokenizeCommand(command: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let inDoubleQuotes = false;
-  let inSingleQuotes = false;
-  let escaped = false;
-
-  for (let i = 0; i < command.length; i++) {
-    const char = command[i];
-
-    if (escaped) {
-      current += char;
-      escaped = false;
-      continue;
-    }
-
-    if (char === "\\") {
-      escaped = true;
-      current += char;
-      continue;
-    }
-
-    if (char === '"' && !inSingleQuotes) {
-      inDoubleQuotes = !inDoubleQuotes;
-      current += char;
-      continue;
-    }
-
-    if (char === "'" && !inDoubleQuotes) {
-      inSingleQuotes = !inSingleQuotes;
-      current += char;
-      continue;
-    }
-
-    if ((char === " " || char === "\t") && !inDoubleQuotes && !inSingleQuotes) {
-      if (current.trim()) {
-        tokens.push(current.trim());
-        current = "";
-      }
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.trim()) {
-    tokens.push(current.trim());
-  }
-
-  return tokens;
-}
-
-/**
- * Check if a token is a flag or option (not a path)
- */
-function isFlagOrOption(token: string): boolean {
-  // Remove surrounding quotes
-  const cleanToken = token.replace(/^["']|["']$/g, "");
-
-  // Windows: -flag or /flag
-  if (cleanToken.match(/^[-/][^-/]/)) {
-    return true;
-  }
-
-  // Unix: --long-flag or -s
-  if (cleanToken.match(/^--?[a-zA-Z]/)) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Check if a token is likely a file/directory path argument
- */
-function isLikelyPathArgument(token: string): boolean {
-  // Remove surrounding quotes
-  const cleanToken = token.replace(/^["']|["']$/g, "");
-
-  // Windows absolute path: C:\path or \\server\share\path
-  if (cleanToken.match(/^[A-Za-z]:[\\/]/) || cleanToken.startsWith("\\\\")) {
-    return true;
-  }
-
-  // Unix absolute path: /path
-  if (cleanToken.startsWith("/") && !cleanToken.match(/^\/[a-zA-Z]\//)) {
-    // Exclude Windows-style paths like /c/path
-    return true;
-  }
-
-  // Home directory: ~/path or ~
-  if (cleanToken.startsWith("~/") || cleanToken === "~") {
-    return true;
-  }
-
-  // Relative path: ./path or ../path
-  if (cleanToken.startsWith("./") || cleanToken.startsWith("../")) {
-    return true;
-  }
-
-  // Path with environment variable: $HOME/path or %USERPROFILE%\path
-  if (cleanToken.includes("$") || cleanToken.includes("%")) {
-    return true;
-  }
-
-  // If it contains path separators, might be a path
-  if (cleanToken.includes("/") || cleanToken.includes("\\")) {
-    // But exclude URLs and other non-path strings
-    if (
-      !cleanToken.match(/^https?:\/\//) &&
-      !cleanToken.match(/^[a-zA-Z]+:\/\//) &&
-      !cleanToken.match(/^[a-zA-Z]+:/) // Exclude single-letter drive-like patterns
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Resolve a path token to an absolute path
- */
-function resolvePath(token: string, workdir: string): string | null {
-  try {
-    // Remove surrounding quotes
-    let cleanToken = token.replace(/^["']|["']$/g, "");
-
-    // Expand environment variables
-    cleanToken = expandEnvironmentVariables(cleanToken);
-
-    // Expand home directory
-    cleanToken = expandHome(cleanToken);
-
-    // Resolve to absolute path
-    let absolute: string;
-    if (path.isAbsolute(cleanToken)) {
-      absolute = path.resolve(cleanToken);
-    } else {
-      absolute = path.resolve(workdir, cleanToken);
-    }
-
-    // Normalize the path
-    return path.normalize(absolute);
-  } catch {
-    // If resolution fails, return null (don't block, but don't validate)
-    return null;
-  }
-}
-
-/**
- * Expand environment variables in a path string
- */
-function expandEnvironmentVariables(pathStr: string): string {
-  // Windows: %VAR%
-  pathStr = pathStr.replace(/%([^%]+)%/g, (match, varName) => {
-    return process.env[varName] || match;
-  });
-
-  // Unix: $VAR or ${VAR}
-  pathStr = pathStr.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (match, varName) => {
-    return process.env[varName] || match;
-  });
-
-  pathStr = pathStr.replace(/\${([^}]+)}/g, (match, varName) => {
-    return process.env[varName] || match;
-  });
-
-  return pathStr;
-}
-

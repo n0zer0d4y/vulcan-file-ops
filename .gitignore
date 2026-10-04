@@ -385,6 +385,7 @@ dev.log
 test
 prompt
 server.log
+.mcp.json
 
 # MCP Publisher Tokens
 .mcpregistry_github_token

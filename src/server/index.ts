@@ -76,6 +76,7 @@ import { initializeShellTool, getShellTools } from "../tools/shell-tool.js";
 let allowedDirectories: string[] = [];
 let approvedFoldersFromArgs: string[] = [];
 let approvedCommandsFromArgs: string[] = [];
+let dangerousCommandsFromArgs: string[] = [];
 let ignoredFolders: string[] = [];
 let enabledToolCategories: string[] = [];
 let enabledTools: string[] = [];
@@ -115,6 +116,12 @@ function parseArguments() {
     );
     console.error(
       "  --approved-commands <cmds...>   Allow specific shell commands (comma-separated)"
+    );
+    console.error(
+      "  --allow-dangerous-commands <cmds...>  Approved commands that may run even when they match"
+    );
+    console.error(
+      "                                  a dangerous pattern (e.g. rm -rf); comma-separated"
     );
     console.error(
       "  --commands-env-file <path>      Read APPROVED_COMMANDS from this .env-format file (only"
@@ -335,6 +342,27 @@ function parseArguments() {
           .filter((cmd) => cmd.length > 0)
       );
 
+      continue;
+    }
+
+    if (arg === "--allow-dangerous-commands") {
+      parsingApprovedCommands = false;
+      parsingIgnoredFolders = false;
+      parsingApprovedFolders = false;
+      parsingEnabledToolCategories = false;
+      parsingEnabledTools = false;
+
+      const commands: string[] = [];
+      while (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        commands.push(args[i + 1]);
+        i++;
+      }
+      dangerousCommandsFromArgs = commands.flatMap((c) =>
+        c
+          .split(",")
+          .map((cmd) => cmd.trim())
+          .filter((cmd) => cmd.length > 0)
+      );
       continue;
     }
 
@@ -569,7 +597,7 @@ async function initializeDirectories() {
 
   // Initialize shell tool with approved commands
   if (finalApprovedCommands.length > 0) {
-    initializeShellTool(finalApprovedCommands);
+    initializeShellTool(finalApprovedCommands, dangerousCommandsFromArgs);
     if (!isMCP) {
       console.error(
         `Initialized shell tool with ${finalApprovedCommands.length} approved command(s)`

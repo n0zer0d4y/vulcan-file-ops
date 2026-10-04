@@ -495,6 +495,12 @@ export async function validatePath(
         }
         return absolute;
       } catch (parentError) {
+        // Only a missing parent is "does not exist"; an access-denied result
+        // (e.g. the parent resolves outside the allowed directories) must keep
+        // its own message instead of being reported as missing.
+        if (!isNotFoundError(parentError)) {
+          throw parentError;
+        }
         if (!createParentIfMissing) {
           throw new Error(`Parent directory does not exist: ${parentDir}`);
         }
@@ -1236,6 +1242,9 @@ export async function tailFile(
     let linesFound = 0;
     let remainingText = "";
     let linesLength = 0;
+    // The newline that ends the last line does not start another (empty)
+    // line, so tail of "a\nb\n" with 1 line is "b", as with POSIX tail.
+    let atFileEnd = true;
 
     // Read chunks from the end of the file until we have enough lines
     while (position > 0 && linesFound < numLines) {
@@ -1259,6 +1268,13 @@ export async function tailFile(
 
       // Split by newlines and count
       const chunkLines = normalizeLineEndings(chunkText).split("\n");
+
+      if (atFileEnd) {
+        if (chunkLines.length > 1 && chunkLines[chunkLines.length - 1] === "") {
+          chunkLines.pop();
+        }
+        atFileEnd = false;
+      }
 
       // If this isn't the end of the file, the first line is likely incomplete
       // Save it to prepend to the next chunk
@@ -1609,10 +1625,13 @@ export async function grepFilesWithValidation(
       }
     }
 
-    // Apply glob filter
+    // Apply glob filter. Like ripgrep's --glob, a pattern without a slash
+    // (e.g. "*.md") matches the file name at any depth; a pattern with a
+    // slash (e.g. "src/**/*.ts") is matched against the relative path.
     if (globPattern) {
       const relativePath = path.relative(searchPath, filePath);
-      if (!minimatch(relativePath, globPattern, { dot: true })) {
+      const matchBase = !/[\\/]/.test(globPattern);
+      if (!minimatch(relativePath, globPattern, { dot: true, matchBase })) {
         return; // Skip files that don't match glob
       }
     }

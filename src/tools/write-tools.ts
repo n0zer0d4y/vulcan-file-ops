@@ -17,6 +17,7 @@ import {
   writeBinaryFileAtomic,
   readFileContent,
   applyFileEdits,
+  getFileStats,
 } from "../utils/lib.js";
 import {
   isHTMLContent,
@@ -538,10 +539,13 @@ export async function handleWriteTool(name: string, args: any) {
       const writePromises = validFiles.map(async (file) => {
         try {
           await writeFileBasedOnExtension(file.validPath, file.content);
+          // Report the size of the written file: for PDF/DOCX this is the
+          // generated document, not the length of the HTML input.
+          const { size } = await getFileStats(file.validPath);
           return {
             path: file.path,
             success: true,
-            size: Buffer.byteLength(file.content, "utf8"),
+            size,
           };
         } catch (error) {
           return {
