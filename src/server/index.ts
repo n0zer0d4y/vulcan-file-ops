@@ -80,6 +80,7 @@ let ignoredFolders: string[] = [];
 let enabledToolCategories: string[] = [];
 let enabledTools: string[] = [];
 let runtimeRegistrationPolicy: RuntimeRegistrationPolicy = "confirm";
+let envFileFromArgs: string | null = null;
 
 // Command line argument parsing
 function parseArguments() {
@@ -114,6 +115,12 @@ function parseArguments() {
     );
     console.error(
       "  --approved-commands <cmds...>   Allow specific shell commands (comma-separated)"
+    );
+    console.error(
+      "  --commands-env-file <path>      Read APPROVED_COMMANDS from this .env-format file (only"
+    );
+    console.error(
+      "                                  that key is used; nothing is added to the environment)"
     );
     console.error(
       "  --runtime-registration <mode>   register_directory policy: confirm (default; user must"
@@ -263,6 +270,41 @@ function parseArguments() {
         process.exit(1);
       }
       runtimeRegistrationPolicy = value.trim() as RuntimeRegistrationPolicy;
+      parsingIgnoredFolders = false;
+      parsingApprovedFolders = false;
+      parsingEnabledToolCategories = false;
+      parsingEnabledTools = false;
+      parsingApprovedCommands = false;
+      continue;
+    }
+
+    // Node.js itself scans ALL argv entries (even after the script) for
+    // --env-file and applies NODE_OPTIONS from that file to this process,
+    // so the server must not use that name.
+    if (arg === "--env-file" || arg.startsWith("--env-file=")) {
+      console.error(
+        "Error: --env-file is reserved by Node.js. Use --commands-env-file <path> instead."
+      );
+      console.error("Run with --help for usage information.");
+      process.exit(1);
+    }
+
+    if (
+      arg === "--commands-env-file" ||
+      arg.startsWith("--commands-env-file=")
+    ) {
+      let value: string | undefined;
+      if (arg.includes("=")) {
+        value = arg.slice(arg.indexOf("=") + 1);
+      } else if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+        value = args[++i];
+      }
+      if (!value || value.trim().length === 0) {
+        console.error("Error: --commands-env-file requires a file path");
+        console.error("Run with --help for usage information.");
+        process.exit(1);
+      }
+      envFileFromArgs = value.trim();
       parsingIgnoredFolders = false;
       parsingApprovedFolders = false;
       parsingEnabledToolCategories = false;
@@ -494,29 +536,33 @@ async function initializeDirectories() {
         `  Approved commands (from CLI): ${finalApprovedCommands.join(", ")}`
       );
     }
-  } else {
-    // Priority 2: Load from .env file
+  } else if (envFileFromArgs) {
+    // Priority 2: explicit --commands-env-file. Security (VFO-08): never load a .env
+    // implicitly from the working directory, and never inject its variables
+    // into process.env (shell commands inherit it). Only APPROVED_COMMANDS
+    // is read.
+    const envPath = path.resolve(process.cwd(), expandHome(envFileFromArgs));
     try {
-      const envPath = path.join(process.cwd(), ".env");
-      dotenv.config({ path: envPath, quiet: true });
-
-      if (process.env.APPROVED_COMMANDS) {
-        finalApprovedCommands = process.env.APPROVED_COMMANDS.split(",")
-          .map((c) => c.trim())
-          .filter((c) => c.length > 0);
-        if (!isMCP) {
-          console.error(
-            `  Approved commands (from .env): ${finalApprovedCommands.join(
-              ", "
-            )}`
-          );
-        }
-      }
-    } catch (error) {
+      const parsedEnv = dotenv.parse(readFileSync(envPath));
+      finalApprovedCommands = (parsedEnv.APPROVED_COMMANDS ?? "")
+        .split(",")
+        .map((c) => c.trim())
+        .filter((c) => c.length > 0);
       if (!isMCP) {
         console.error(
-          "  Note: Could not load .env file (this is okay if using CLI args)"
+          `  Approved commands (from ${envPath}): ${finalApprovedCommands.join(
+            ", "
+          )}`
         );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `Error: Could not read --commands-env-file ${envPath}: ${message}`
+      );
+      // In MCP mode, don't exit - continue with no approved commands
+      if (!isMCP) {
+        process.exit(1);
       }
     }
   }
