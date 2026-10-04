@@ -1,6 +1,8 @@
 import path from "path";
 import { promises as fs } from "fs";
 import type { DocumentParseResult } from "../types/index.js";
+import { MAX_DOCUMENT_FILE_BYTES } from "./limits.js";
+import { assertSafeZipFile, UnsafeZipError } from "./zip-guard.js";
 
 // Lazy-loaded parsers (imported only when needed)
 let pdfParse: any = null;
@@ -9,6 +11,16 @@ let officeParser: any = null;
 
 const DOCUMENT_EXTENSIONS = [
   ".pdf",
+  ".docx",
+  ".pptx",
+  ".xlsx",
+  ".odt",
+  ".odp",
+  ".ods",
+] as const;
+
+/** Document formats that are ZIP containers (guarded against zip bombs). */
+const ZIP_DOCUMENT_EXTENSIONS = [
   ".docx",
   ".pptx",
   ".xlsx",
@@ -35,12 +47,32 @@ export async function parseDocument(
   const stats = await fs.stat(filePath);
 
   // File size validation
-  const MAX_SIZE = 50 * 1024 * 1024; // 50MB
-  if (stats.size > MAX_SIZE) {
+  if (stats.size > MAX_DOCUMENT_FILE_BYTES) {
     throw new Error(
       `Document too large (${(stats.size / 1024 / 1024).toFixed(1)}MB). ` +
-        `Maximum: 50MB`
+        `Maximum: ${Math.round(MAX_DOCUMENT_FILE_BYTES / 1024 / 1024)}MB`
     );
+  }
+
+  // ZIP-based formats: reject decompression bombs before any parser (or the
+  // officeparser fallback below) inflates the archive (VFO-15).
+  if ((ZIP_DOCUMENT_EXTENSIONS as readonly string[]).includes(ext)) {
+    try {
+      await assertSafeZipFile(filePath);
+    } catch (error) {
+      if (error instanceof UnsafeZipError) {
+        const label = ext.slice(1).toUpperCase();
+        throw new DocumentParseError(
+          filePath,
+          ext,
+          error.reason === "invalid"
+            ? `File appears to be corrupted or is not a valid ${label} document (${error.message}).`
+            : `Refusing to parse ${label} document: ${error.message}.`,
+          error
+        );
+      }
+      throw error;
+    }
   }
 
   // Check for legacy .doc format

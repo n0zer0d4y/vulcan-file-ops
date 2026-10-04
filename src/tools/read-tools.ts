@@ -1,4 +1,4 @@
-import { createReadStream } from "fs";
+import { createReadStream, promises as fs } from "fs";
 import path from "path";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -14,12 +14,16 @@ import {
 } from "../types/index.js";
 import {
   validatePath,
-  readFileContent,
   tailFile,
   headFile,
   rangeFile,
 } from "../utils/lib.js";
 import { isDocumentFile, parseDocument } from "../utils/document-parser.js";
+import {
+  MAX_IMAGE_ATTACH_BYTES,
+  MAX_IMAGE_ATTACH_TOTAL_BYTES,
+  MAX_TEXT_READ_BYTES,
+} from "../utils/limits.js";
 import {
   createPathArraySchema,
   sanitizeToolInputSchema,
@@ -28,22 +32,76 @@ import {
 const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = any;
 
+const formatMB = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
 // Reads a file as a stream of buffers, concatenates them, and then encodes
-// the result to a Base64 string. This is a memory-efficient way to handle
-// binary data from a stream before the final encoding.
-async function readFileAsBase64Stream(filePath: string): Promise<string> {
+// the result to a Base64 string. At most `maxBytes` are read: a file that
+// grew past the limit after it was checked is rejected rather than read.
+async function readFileAsBase64Stream(
+  filePath: string,
+  maxBytes: number
+): Promise<string> {
   return new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath);
+    const stream = createReadStream(filePath, { start: 0, end: maxBytes });
     const chunks: Buffer[] = [];
+    let total = 0;
     stream.on("data", (chunk) => {
+      total += (chunk as Buffer).length;
       chunks.push(chunk as Buffer);
     });
     stream.on("end", () => {
+      if (total > maxBytes) {
+        reject(
+          new Error(
+            `Image ${path.basename(filePath)} exceeds the ${formatMB(maxBytes)} limit`
+          )
+        );
+        return;
+      }
       const finalBuffer = Buffer.concat(chunks);
       resolve(finalBuffer.toString("base64"));
     });
     stream.on("error", (err) => reject(err));
   });
+}
+
+/**
+ * Read a whole text file ("full" mode), refusing files larger than
+ * MAX_TEXT_READ_BYTES (VFO-15). The read itself is bounded too, so a file
+ * that grows after the size check (or a device/FIFO that reports size 0)
+ * cannot exhaust memory.
+ */
+async function readFullTextFile(filePath: string): Promise<string> {
+  const tooLarge = (size: string) =>
+    new Error(
+      `File is too large to read in full mode (${size}; limit ` +
+        `${formatMB(MAX_TEXT_READ_BYTES)}). Use mode "head", "tail" or "range" ` +
+        `to read part of it.`
+    );
+
+  const handle = await fs.open(filePath, "r");
+  try {
+    const { size } = await handle.stat();
+    if (size > MAX_TEXT_READ_BYTES) {
+      throw tooLarge(formatMB(size));
+    }
+
+    const buffer = Buffer.alloc(64 * 1024);
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > MAX_TEXT_READ_BYTES) {
+        throw tooLarge(`more than ${formatMB(MAX_TEXT_READ_BYTES)}`);
+      }
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
+    return Buffer.concat(chunks).toString("utf-8");
+  } finally {
+    await handle.close();
+  }
 }
 
 export function getReadTools() {
@@ -165,7 +223,7 @@ export async function handleReadTool(name: string, args: any) {
 
         case "full":
         default: {
-          const content = await readFileContent(validPath);
+          const content = await readFullTextFile(validPath);
           return {
             content: [{ type: "text", text: content }],
           };
@@ -195,8 +253,8 @@ export async function handleReadTool(name: string, args: any) {
         ".svg": "image/svg+xml",
       };
 
-      // Process all images
-      const imageContents = await Promise.all(
+      // Validate all images and check sizes before reading any of them
+      const images = await Promise.all(
         paths.map(async (imagePath) => {
           const validPath = await validatePath(imagePath);
           const extension = path.extname(validPath).toLowerCase();
@@ -209,14 +267,36 @@ export async function handleReadTool(name: string, args: any) {
             );
           }
 
-          const data = await readFileAsBase64Stream(validPath);
-
-          return {
-            type: "image" as const,
-            data: data,
-            mimeType: mimeType,
-          };
+          const { size } = await fs.stat(validPath);
+          return { imagePath, validPath, mimeType, size };
         })
+      );
+
+      // Size caps (VFO-15): per image and per call
+      const oversized = images.filter((i) => i.size > MAX_IMAGE_ATTACH_BYTES);
+      if (oversized.length > 0) {
+        throw new Error(
+          `Image(s) exceed the ${formatMB(MAX_IMAGE_ATTACH_BYTES)} per-image limit: ` +
+            oversized
+              .map((i) => `${i.imagePath} (${formatMB(i.size)})`)
+              .join(", ")
+        );
+      }
+      const totalSize = images.reduce((sum, i) => sum + i.size, 0);
+      if (totalSize > MAX_IMAGE_ATTACH_TOTAL_BYTES) {
+        throw new Error(
+          `Images total ${formatMB(totalSize)}, which exceeds the ` +
+            `${formatMB(MAX_IMAGE_ATTACH_TOTAL_BYTES)} limit per attach_image call. ` +
+            `Attach fewer images per call.`
+        );
+      }
+
+      const imageContents = await Promise.all(
+        images.map(async ({ validPath, mimeType }) => ({
+          type: "image" as const,
+          data: await readFileAsBase64Stream(validPath, MAX_IMAGE_ATTACH_BYTES),
+          mimeType: mimeType,
+        }))
       );
 
       // Return all images in MCP-compliant format
@@ -299,7 +379,7 @@ export async function handleReadTool(name: string, args: any) {
               break;
             case "full":
             default:
-              content = await readFileContent(validPath);
+              content = await readFullTextFile(validPath);
               break;
           }
 
