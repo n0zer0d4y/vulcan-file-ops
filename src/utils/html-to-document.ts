@@ -10,7 +10,12 @@
  * - jsdom: DOM emulation for Node.js
  */
 
-import { promises as fs } from "fs";
+import {
+  sanitizeHtmlImages,
+  scrubPdfmakeImages,
+  type ImageSanitizeOptions,
+} from "./html-image-sanitizer.js";
+import { PDF_GENERATION_TIMEOUT_MS } from "./limits.js";
 
 // Lazy-loaded libraries (imported only when needed)
 let pdfMake: any = null;
@@ -69,10 +74,13 @@ function sanitizeHTMLForDOCX(html: string): string {
       // Common typographic characters
       .replace(/—/g, "&mdash;") // Em dash
       .replace(/–/g, "&ndash;") // En dash
-      .replace(/"/g, "&ldquo;") // Left double quote
-      .replace(/"/g, "&rdquo;") // Right double quote
-      .replace(/'/g, "&lsquo;") // Left single quote
-      .replace(/'/g, "&rsquo;") // Right single quote
+      // Curly quotes only (written as escapes so they cannot be "normalized"
+      // into ASCII quotes, which previously turned every quoted attribute
+      // value - e.g. src="data:..." or style="..." - into garbage).
+      .replace(/“/g, "&ldquo;") // Left double quote
+      .replace(/”/g, "&rdquo;") // Right double quote
+      .replace(/‘/g, "&lsquo;") // Left single quote
+      .replace(/’/g, "&rsquo;") // Right single quote
       .replace(/…/g, "&hellip;") // Ellipsis
       // Degree and other symbols
       .replace(/°/g, "&deg;") // Degree
@@ -107,6 +115,8 @@ export async function htmlToPDF(
     author?: string;
     subject?: string;
     keywords?: string[];
+    /** Rendering timeout; defaults to PDF_GENERATION_TIMEOUT_MS. */
+    timeoutMs?: number;
   } = {}
 ): Promise<Buffer> {
   // Lazy load dependencies
@@ -143,8 +153,15 @@ export async function htmlToPDF(
   // Create DOM window for html-to-pdfmake
   const { window } = new jsdom("");
 
+  // Only validated inline data: images may reach pdfmake (VFO-13).
+  const imageOptions: ImageSanitizeOptions = {
+    ...PDF_IMAGE_OPTIONS,
+    memo: new Map(),
+  };
+  const safeHTML = sanitizeHtmlImages(htmlContent, imageOptions);
+
   // Convert HTML to PDFMake format with styling
-  const converted = htmlToPdfmake(htmlContent, {
+  const converted = htmlToPdfmake(safeHTML, {
     window,
     defaultStyles: {
       // Headings with colors
@@ -248,15 +265,74 @@ export async function htmlToPDF(
     pageMargins: [40, 60, 40, 60],
   };
 
-  // Generate PDF and return as Buffer
-  return new Promise((resolve, reject) => {
+  // Defense in depth: html-to-pdfmake can also emit image nodes from
+  // `data-pdfmake` attributes, so validate the final tree as well.
+  scrubPdfmakeImages(converted, imageOptions);
+
+  return renderPdfBuffer(
+    docDefinition,
+    options.timeoutMs ?? PDF_GENERATION_TIMEOUT_MS,
+  );
+}
+
+/**
+ * pdfkit (used by pdfmake) can only embed PNG and JPEG images; anything else
+ * would make the whole PDF fail, so other formats degrade to alt text.
+ */
+const PDF_IMAGE_OPTIONS: ImageSanitizeOptions = {
+  allowedTypes: ["png", "jpeg"],
+  verifyPngForPdfkit: true,
+};
+
+const DOCX_IMAGE_OPTIONS: ImageSanitizeOptions = {};
+
+function toError(error: unknown): Error {
+  if (error instanceof Error) return error;
+  return new Error(typeof error === "string" ? error : String(error));
+}
+
+/**
+ * Render a pdfmake document definition to a Buffer.
+ *
+ * pdfmake 0.2.x's `getBuffer(cb)` builds the document inside an internal
+ * promise chain: if building fails (e.g. an invalid image), the callback is
+ * never called and the rejection is unhandled, which hangs the write and
+ * terminates Node (VFO-13). pdfmake exposes no promise API to catch that, so
+ * instead we use `getStream()` without a callback: it builds the PDFKit
+ * document synchronously (errors are thrown to us here) and skips pdfmake's
+ * URL resolver entirely (no network fetches of fonts/images). The stream is
+ * then drained with error handling and a hard timeout, so this promise always
+ * settles.
+ */
+function renderPdfBuffer(
+  docDefinition: unknown,
+  timeoutMs: number,
+): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      settle(new Error(`PDF generation timed out after ${timeoutMs} ms`));
+    }, timeoutMs);
+    timer.unref?.();
+
+    function settle(error: Error | null, buffer?: Buffer) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(buffer as Buffer);
+    }
+
     try {
       const pdfDoc = pdfMake.createPdf(docDefinition);
-      pdfDoc.getBuffer((buffer: Buffer) => {
-        resolve(buffer);
-      });
+      const stream = pdfDoc.getStream();
+      const chunks: Buffer[] = [];
+      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stream.on("end", () => settle(null, Buffer.concat(chunks)));
+      stream.on("error", (error: unknown) => settle(toError(error)));
+      stream.end();
     } catch (error) {
-      reject(error);
+      settle(toError(error));
     }
   });
 }
@@ -293,8 +369,12 @@ export async function htmlToDOCX(
     HTMLtoDOCX = (module as any).default || module;
   }
 
+  // Only validated inline data: images may reach html-to-docx, which would
+  // otherwise download http(s) image URLs (VFO-13).
+  const imageSafeHTML = sanitizeHtmlImages(htmlContent, DOCX_IMAGE_OPTIONS);
+
   // Sanitize HTML to handle problematic Unicode characters
-  const sanitizedHTML = sanitizeHTMLForDOCX(htmlContent);
+  const sanitizedHTML = sanitizeHTMLForDOCX(imageSafeHTML);
 
   // DOCX generation options
   const docxOptions = {
@@ -340,6 +420,7 @@ export async function convertHTMLToPDF(
     author?: string;
     subject?: string;
     keywords?: string[];
+    timeoutMs?: number;
   } = {}
 ): Promise<Buffer> {
   try {
