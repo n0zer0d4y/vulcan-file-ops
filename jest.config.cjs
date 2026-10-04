@@ -47,6 +47,7 @@ module.exports = {
     "\\.d\\.ts$",
   ],
   testMatch: ["**/tests/**/*.test.ts", "**/__tests__/**/*.test.ts"],
-  testPathIgnorePatterns: ["/node_modules/", "/dist/"],
+  testPathIgnorePatterns: ["/node_modules/", "/dist/", "[\\\\/]\\.claude[\\\\/]"],
+  modulePathIgnorePatterns: ["[\\\\/]\\.claude[\\\\/]"],
   collectCoverageFrom: ["src/**/*.ts", "!src/tests/**", "!src/__tests__/**"],
 };
