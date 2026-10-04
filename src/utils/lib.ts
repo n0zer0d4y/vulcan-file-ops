@@ -494,6 +494,197 @@ export async function validatePath(
   }
 }
 
+// Canonical containment helpers
+//
+// isPathWithinAllowedDirectories() is a purely lexical check. Paths that are
+// handed to something other than Node's fs (e.g. a shell command line) or that
+// are created with mkdir must also be checked after symlink resolution.
+
+function isNotFoundError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+/**
+ * Lexical normalization first, then realpath of the nearest existing ancestor
+ * with the non-existent remainder re-appended. Matches Win32 and Node fs
+ * semantics, where ".." is collapsed before symlinks are followed.
+ */
+export async function resolveLexicalCanonicalPath(
+  absolutePath: string,
+): Promise<string> {
+  const resolved = path.resolve(absolutePath);
+  const tail: string[] = [];
+  let current = resolved;
+
+  while (true) {
+    try {
+      const real = await fs.realpath(current);
+      return tail.length > 0 ? path.join(real, ...tail.reverse()) : real;
+    } catch (error) {
+      if (!isNotFoundError(error)) {
+        throw error;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) {
+        return resolved;
+      }
+      tail.push(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * Component-by-component resolution that follows symlinks before applying
+ * "..", matching how a POSIX kernel resolves the path a shell passes to it.
+ * On Windows this is stricter than the OS (which collapses ".." first), which
+ * only ever produces extra denials, never extra access.
+ */
+export async function resolvePhysicalCanonicalPath(
+  inputPath: string,
+  baseDir: string,
+): Promise<string> {
+  const absolute = path.isAbsolute(inputPath)
+    ? inputPath
+    : `${baseDir}${path.sep}${inputPath}`;
+  const rawRoot = path.parse(absolute).root;
+  const root = path.parse(path.resolve(absolute)).root;
+  const separator = path.sep === "\\" ? /[\\/]+/ : /\/+/;
+  const components = absolute.slice(rawRoot.length).split(separator);
+
+  let current = root;
+  for (const component of components) {
+    if (!component || component === ".") {
+      continue;
+    }
+    if (component === "..") {
+      current = path.dirname(current);
+      continue;
+    }
+    const next = path.join(current, component);
+    try {
+      current = await fs.realpath(next);
+    } catch (error) {
+      if (!isNotFoundError(error)) {
+        throw error;
+      }
+      current = next;
+    }
+  }
+  return current;
+}
+
+/**
+ * True only if the path is inside the allowed directories lexically, after
+ * lexical-then-realpath resolution, and after physical resolution. Relative
+ * paths are resolved against baseDir. Any resolution error denies access.
+ */
+export async function isPathCanonicallyAllowed(
+  inputPath: string,
+  baseDir: string,
+): Promise<boolean> {
+  const allowed = getAllowedDirectories();
+  if (allowed.length === 0 || !inputPath || inputPath.includes("\x00")) {
+    return false;
+  }
+
+  try {
+    const absolute = path.isAbsolute(inputPath)
+      ? path.resolve(inputPath)
+      : path.resolve(baseDir, inputPath);
+    if (!isPathWithinAllowedDirectories(normalizePath(absolute), allowed)) {
+      return false;
+    }
+
+    const lexical = await resolveLexicalCanonicalPath(absolute);
+    if (!isPathWithinAllowedDirectories(normalizePath(lexical), allowed)) {
+      return false;
+    }
+
+    const physical = await resolvePhysicalCanonicalPath(inputPath, baseDir);
+    return isPathWithinAllowedDirectories(normalizePath(physical), allowed);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Create a directory (and any missing ancestors) only inside the allowed
+ * directories. Every directory created is re-checked with realpath so a
+ * symlink or junction swapped into the chain cannot redirect creation.
+ * Returns the real path of the directory.
+ */
+export async function ensureDirectoryWithinAllowed(
+  dirPath: string,
+): Promise<string> {
+  const absolute = path.resolve(expandHome(dirPath));
+  const allowed = getAllowedDirectories();
+
+  if (!(await isPathCanonicallyAllowed(absolute, process.cwd()))) {
+    throw new Error(
+      `Access denied - path outside allowed directories: ${absolute} not in ${allowed.join(", ")}`,
+    );
+  }
+
+  const missing: string[] = [];
+  let current = absolute;
+  while (true) {
+    try {
+      await fs.lstat(current);
+      break;
+    } catch (error) {
+      if (!isNotFoundError(error)) {
+        throw error;
+      }
+      missing.push(current);
+      const parent = path.dirname(current);
+      if (parent === current) {
+        break;
+      }
+      current = parent;
+    }
+  }
+
+  for (const dir of missing.reverse()) {
+    try {
+      await fs.mkdir(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+    }
+    const realCreated = await fs.realpath(dir);
+    if (
+      !isPathWithinAllowedDirectories(
+        normalizePath(realCreated),
+        getAllowedDirectories(),
+      )
+    ) {
+      throw new Error(
+        `Access denied - directory resolves outside allowed directories: ${realCreated}`,
+      );
+    }
+  }
+
+  const realFinal = await fs.realpath(absolute);
+  if (
+    !isPathWithinAllowedDirectories(
+      normalizePath(realFinal),
+      getAllowedDirectories(),
+    )
+  ) {
+    throw new Error(
+      `Access denied - directory resolves outside allowed directories: ${realFinal}`,
+    );
+  }
+  const stats = await fs.stat(realFinal);
+  if (!stats.isDirectory()) {
+    throw new Error(`Path exists and is not a directory: ${absolute}`);
+  }
+  return realFinal;
+}
+
 // File Operations
 export async function getFileStats(filePath: string): Promise<FileInfo> {
   const stats = await fs.stat(filePath);
@@ -519,10 +710,29 @@ export async function writeFileContent(
   filePath: string,
   content: string,
 ): Promise<void> {
+  await writeFileAtomic(filePath, content);
+}
+
+/**
+ * Binary counterpart of writeFileContent (PDF/DOCX output) with the same
+ * symlink-safe, atomic write semantics.
+ */
+export async function writeBinaryFileAtomic(
+  filePath: string,
+  data: Uint8Array,
+): Promise<void> {
+  await writeFileAtomic(filePath, data);
+}
+
+async function writeFileAtomic(
+  filePath: string,
+  data: string | Uint8Array,
+): Promise<void> {
+  const encoding = typeof data === "string" ? ("utf-8" as const) : undefined;
   try {
     // Security: 'wx' flag ensures exclusive creation - fails if file/symlink exists,
     // preventing writes through pre-existing symlinks
-    await fs.writeFile(filePath, content, { encoding: "utf-8", flag: "wx" });
+    await fs.writeFile(filePath, data, { encoding, flag: "wx" });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
       // Security: Use atomic rename to prevent race conditions where symlinks
@@ -530,7 +740,7 @@ export async function writeFileContent(
       // replace the target file atomically and don't follow symlinks.
       const tempPath = `${filePath}.${randomBytes(16).toString("hex")}.tmp`;
       try {
-        await fs.writeFile(tempPath, content, "utf-8");
+        await fs.writeFile(tempPath, data, { encoding, flag: "wx" });
         await fs.rename(tempPath, filePath);
       } catch (renameError) {
         try {
