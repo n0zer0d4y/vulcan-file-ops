@@ -10,8 +10,6 @@ import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import { expandHome, normalizePath } from "../utils/path-utils.js";
 
-import { isPathWithinAllowedDirectories } from "../utils/path-validation.js";
-
 import {
   MakeDirectoryArgsSchema,
   ListDirectoryArgsSchema,
@@ -41,6 +39,8 @@ import {
   setAllowedDirectories,
   shouldIgnoreFolder,
   getIgnoredFolders,
+  isPathCanonicallyAllowed,
+  ensureDirectoryWithinAllowed,
 } from "../utils/lib.js";
 import {
   createEmptyObjectSchema,
@@ -648,31 +648,32 @@ export async function handleFileSystemTool(name: string, args: any) {
         ? pathsInput
         : [pathsInput];
 
-      // Validate all paths first (atomic - fail before any creation)
-      const allowedDirs = getAllowedDirectories();
-      const validatedPaths = pathsToCreate.map((dirPath) => {
+      // Validate all paths first (atomic - fail before any creation).
+      // Security: the check is canonical (lexical + realpath + physical), so a
+      // symlink or junction inside an allowed directory that points outside it
+      // is rejected here instead of being followed by mkdir (VFO-05).
+      const validatedPaths: { original: string; absolutePath: string }[] = [];
+      for (const dirPath of pathsToCreate) {
         const expandedPath = expandHome(dirPath);
-        // Resolve to absolute path - required by isPathWithinAllowedDirectories
         const absolutePath = path.isAbsolute(expandedPath)
           ? path.resolve(expandedPath)
           : path.resolve(process.cwd(), expandedPath);
-        const normalized = normalizePath(absolutePath);
 
-        // Use secure path validation function to prevent prefix collision attacks
-        // (CVE-2025-54794 pattern: ensures path separator is required, not just prefix match)
-        if (!isPathWithinAllowedDirectories(normalized, allowedDirs)) {
+        if (!(await isPathCanonicallyAllowed(absolutePath, process.cwd()))) {
           throw new Error(
             `Access denied: Path ${dirPath} is not within allowed directories`,
           );
         }
 
-        return { original: dirPath, normalized };
-      });
+        validatedPaths.push({ original: dirPath, absolutePath });
+      }
 
-      // All validated - now create them concurrently
+      // All validated - now create them. ensureDirectoryWithinAllowed creates
+      // missing segments one at a time and re-checks the realpath of each, so
+      // a link swapped in after validation cannot redirect creation.
       const results = await Promise.all(
-        validatedPaths.map(async ({ original, normalized }) => {
-          await fs.mkdir(normalized, { recursive: true });
+        validatedPaths.map(async ({ original, absolutePath }) => {
+          await ensureDirectoryWithinAllowed(absolutePath);
           return original;
         }),
       );
