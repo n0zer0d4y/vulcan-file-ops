@@ -95,7 +95,7 @@
     "@types/pdf-parse": "^1.1.5",
     "@types/pdfmake": "^0.2.12",
     "jest": "30.2.0",
-    "shx": "^0.3.4",
+    "shx": "^0.4.0",
     "ts-jest": "29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
