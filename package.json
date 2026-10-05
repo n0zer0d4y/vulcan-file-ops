@@ -81,7 +81,7 @@
     "officeparser": "^7.8.0",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
-    "pdfmake": "^0.2.20",
+    "pdfmake": "^0.3.11",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.1"
   },
@@ -93,9 +93,9 @@
     "@types/minimatch": "^5.1.2",
     "@types/node": "^22",
     "@types/pdf-parse": "^1.1.5",
-    "@types/pdfmake": "^0.2.12",
+    "@types/pdfmake": "^0.3.3",
     "jest": "30.2.0",
-    "shx": "^0.3.4",
+    "shx": "^0.4.0",
     "ts-jest": "29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
