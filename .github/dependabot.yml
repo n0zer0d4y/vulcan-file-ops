@@ -9,9 +9,19 @@ updates:
     cooldown:
       default-days: 14
     open-pull-requests-limit: 5
+    # Minor and patch updates arrive together in one PR. Major updates are
+    # reviewed and applied by hand, one package at a time, because they can
+    # break the build or the MCP protocol behavior.
     groups:
-      dependencies:
-        patterns: ["*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Pinned on purpose: newer releases hang several test suites (see CHANGELOG 1.3.0).
+      - dependency-name: "jest"
+      - dependency-name: "@jest/globals"
+      - dependency-name: "ts-jest"
 
   - package-ecosystem: github-actions
     directory: /
