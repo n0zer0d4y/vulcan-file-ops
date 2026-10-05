@@ -24,8 +24,9 @@ jobs:
       # Install scripts disabled: no third-party code runs at install time.
       - run: npm ci --ignore-scripts
 
-      - run: npm test
-
       # The build runs the TypeScript compiler, which catches type errors
-      # that the test runner only reports as warnings.
+      # that the test runner only reports as warnings. It runs before the
+      # tests because real-documents.test.ts exercises the built server in dist/.
       - run: npm run build
+
+      - run: npm test
