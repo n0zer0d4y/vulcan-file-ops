@@ -22,6 +22,12 @@ updates:
       - dependency-name: "jest"
       - dependency-name: "@jest/globals"
       - dependency-name: "ts-jest"
+      # pdfmake 0.3 changed its output API and breaks PDF generation. Unit tests
+      # mock pdfmake, so CI cannot catch this; migrate by hand.
+      - dependency-name: "pdfmake"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@types/pdfmake"
+        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: github-actions
     directory: /
