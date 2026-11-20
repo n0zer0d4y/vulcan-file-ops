@@ -429,4 +429,24 @@ describe("Shell Command Path Validation", () => {
       ).rejects.toThrow();
     });
   });
+
+
+  describe("Tilde user expansion", () => {
+    test("blocks ~user paths the child shell would expand from /etc/passwd", async () => {
+      // ~user expands in the child shell via /etc/passwd (and ~+ / ~- from the
+      // session), which the server cannot resolve, so validation must refuse.
+      const commands = [
+        `cat ~root/${"secret_poc.txt"}`,
+        `cat ~sandbox/secret_poc.txt`,
+        `echo PWN > ~root/escape_poc.txt`,
+        `pwd ~+ && cat /etc/hostname`,
+      ];
+      for (const command of commands) {
+        if (!command.startsWith("cat") && !command.startsWith("echo") && !command.startsWith("pwd")) continue;
+        await expect(handleShellTool("execute_shell", { command })).rejects.toThrow(
+          /Access denied/i
+        );
+      }
+    });
+  });
 });

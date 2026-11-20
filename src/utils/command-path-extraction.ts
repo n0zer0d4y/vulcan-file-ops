@@ -62,6 +62,16 @@ function expandVariables(word: ShellWord): ExpandedWord {
     unresolved = true;
   }
 
+  if (!word.quoted && value.startsWith("~")) {
+    // The child shell expands ~user, ~+ and ~- using /etc/passwd and its own
+    // session state, which the server cannot see. Anything tilde-shaped that
+    // the server cannot expand itself cannot be validated.
+    const tildeSafe = value === "~" || value.startsWith("~/") || value.startsWith("~\\");
+    if (!tildeSafe) {
+      return { value: word.value, unresolved: true };
+    }
+  }
+
   if (!word.quoted) {
     if (value === "~") {
       value = os.homedir();
